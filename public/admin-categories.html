@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Categories — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function CatsAdmin() {
+  const [cats, setCats] = React.useState([]);
+  const [conc, setConc] = React.useState([]);
+  const [nc, setNc] = React.useState({ key: "", label: "", italic: "" });
+  const [nn, setNn] = React.useState({ key: "", label: "" });
+  const load = () => Promise.all([
+    window.api.get("/api/admin/categories").then(setCats),
+    window.api.get("/api/admin/concerns").then(setConc),
+  ]);
+  React.useEffect(() => { load(); }, []);
+
+  const addCategory = async (e) => {
+    e.preventDefault();
+    try { await window.api.post("/api/admin/categories", nc); setNc({ key: "", label: "", italic: "" }); load(); }
+    catch (ex) { alert(ex.message); }
+  };
+  const removeCategory = async (k) => {
+    if (!adminConfirm("Delete this category?")) return;
+    try { await window.api.del("/api/admin/categories/" + encodeURIComponent(k)); load(); }
+    catch (ex) { alert(ex.message); }
+  };
+  const addConcern = async (e) => {
+    e.preventDefault();
+    try { await window.api.post("/api/admin/concerns", nn); setNn({ key: "", label: "" }); load(); }
+    catch (ex) { alert(ex.message); }
+  };
+  const removeConcern = async (k) => {
+    if (!adminConfirm("Delete this concern? Any products tagged with it will lose the tag.")) return;
+    try { await window.api.del("/api/admin/concerns/" + encodeURIComponent(k)); load(); }
+    catch (ex) { alert(ex.message); }
+  };
+
+  const selC = useBulkSelection(cats, "key");
+  const selN = useBulkSelection(conc, "key");
+  const bulkDelCats = async () => {
+    if (!adminConfirm(`Delete ${selC.count} categor${selC.count === 1 ? "y" : "ies"}? Categories with products will be skipped.`)) return;
+    const { ok, failed } = await adminBulkRun(Array.from(selC.selected), (k) => window.api.del("/api/admin/categories/" + encodeURIComponent(k)));
+    selC.clear(); load();
+    if (failed.length) alert(`${ok.length} deleted · ${failed.length} skipped (had products)`);
+  };
+  const bulkDelConc = async () => {
+    if (!adminConfirm(`Delete ${selN.count} concern${selN.count === 1 ? "" : "s"}? Products will lose those tags.`)) return;
+    await adminBulkRun(Array.from(selN.selected), (k) => window.api.del("/api/admin/concerns/" + encodeURIComponent(k)));
+    selN.clear(); load();
+  };
+
+  return (
+    <AdminShell active="categories" eyebrow="Catalogue taxonomy" title={<>Categories &amp; <em>concerns</em></>}>
+      <div className="form-grid">
+        <section className="form-section">
+          <h3>Cate<em>gories</em></h3>
+          <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>The top-level groupings shown in the shop's filter bar and Shop megamenu.</p>
+          <div className="dt-wrap" style={{marginBottom:18}}>
+            <table className="dt">
+              <thead><tr>
+                <th className="bulk-cell"><BulkCheckHeader allSelected={selC.allSelected} some={selC.some} onToggleAll={selC.toggleAll} /></th>
+                <th>Key</th><th>Label</th><th>Italic</th><th></th>
+              </tr></thead>
+              <tbody>
+                {cats.map(c => (
+                  <tr key={c.key}>
+                    <td className="bulk-cell"><input type="checkbox" checked={selC.selected.has(c.key)} onChange={() => selC.toggle(c.key)} /></td>
+                    <td><code>{c.key}</code></td>
+                    <td>{c.label}</td>
+                    <td><em style={{fontFamily:"var(--font-serif)",color:"var(--wine)"}}>{c.italic}</em></td>
+                    <td className="row-actions"><button className="danger" onClick={() => removeCategory(c.key)}>Delete</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <form onSubmit={addCategory}>
+            <div className="form-grid-3">
+              <div className="field"><label>Key</label><input className="input" required value={nc.key} onChange={e => setNc({...nc, key: e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g,"")})} placeholder="e.g. hair" /></div>
+              <div className="field"><label>Label</label><input className="input" required value={nc.label} onChange={e => setNc({...nc, label: e.target.value})} placeholder="Hair" /></div>
+              <div className="field"><label>Italic suffix</label><input className="input" value={nc.italic} onChange={e => setNc({...nc, italic: e.target.value})} placeholder="& Care" /></div>
+            </div>
+            <button className="btn-solid" style={{marginTop:12}}>＋ Add category</button>
+          </form>
+        </section>
+
+        <section className="form-section">
+          <h3>Con<em>cerns</em></h3>
+          <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>Skin/hair concerns customers filter by — e.g. brightening, sensitive, oily.</p>
+          <div className="dt-wrap" style={{marginBottom:18}}>
+            <table className="dt">
+              <thead><tr>
+                <th className="bulk-cell"><BulkCheckHeader allSelected={selN.allSelected} some={selN.some} onToggleAll={selN.toggleAll} /></th>
+                <th>Key</th><th>Label</th><th></th>
+              </tr></thead>
+              <tbody>
+                {conc.map(c => (
+                  <tr key={c.key}>
+                    <td className="bulk-cell"><input type="checkbox" checked={selN.selected.has(c.key)} onChange={() => selN.toggle(c.key)} /></td>
+                    <td><code>{c.key}</code></td>
+                    <td>{c.label}</td>
+                    <td className="row-actions"><button className="danger" onClick={() => removeConcern(c.key)}>Delete</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <form onSubmit={addConcern}>
+            <div className="form-grid-2">
+              <div className="field"><label>Key</label><input className="input" required value={nn.key} onChange={e => setNn({...nn, key: e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g,"")})} placeholder="e.g. redness" /></div>
+              <div className="field"><label>Label</label><input className="input" required value={nn.label} onChange={e => setNn({...nn, label: e.target.value})} placeholder="Redness" /></div>
+            </div>
+            <button className="btn-solid" style={{marginTop:12}}>＋ Add concern</button>
+          </form>
+        </section>
+      </div>
+
+      {/* One BulkBar — shows whichever table has a selection (categories takes priority). */}
+      <BulkBar
+        count={selC.count || selN.count}
+        onClear={() => { selC.clear(); selN.clear(); }}>
+        {selC.count > 0
+          ? <button type="button" className="danger" onClick={bulkDelCats}>Delete categories</button>
+          : <button type="button" className="danger" onClick={bulkDelConc}>Delete concerns</button>}
+      </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(CatsAdmin);
+</script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hero Slides — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function HeroAdmin() {
+  const [rows, setRows] = React.useState(null);
+  const [products, setProducts] = React.useState([]);
+  const [pid, setPid] = React.useState("");
+  const [tag, setTag] = React.useState("Pick of the week");
+  const load = () => window.api.get("/api/admin/hero-slides").then(setRows);
+  React.useEffect(() => {
+    load();
+    window.api.get("/api/admin/products").then(setProducts);
+  }, []);
+
+  const productMap = React.useMemo(() => {
+    const m = {}; products.forEach(p => m[p.id] = p); return m;
+  }, [products]);
+
+  const add = async (e) => {
+    e.preventDefault();
+    if (!pid) return;
+    await window.api.post("/api/admin/hero-slides", { product_id: pid, custom_tag: tag });
+    setPid(""); load();
+  };
+  const update = async (r, patch) => { await window.api.patch("/api/admin/hero-slides/" + r.id, patch); load(); };
+  const del = async (r) => { if (!adminConfirm("Remove this slide?")) return; await window.api.del("/api/admin/hero-slides/" + r.id); load(); };
+  const move = async (r, dir) => {
+    const list = [...rows]; const i = list.findIndex(x => x.id === r.id); const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    await Promise.all([
+      window.api.patch("/api/admin/hero-slides/" + list[i].id, { sort: list[j].sort }),
+      window.api.patch("/api/admin/hero-slides/" + list[j].id, { sort: list[i].sort }),
+    ]);
+    load();
+  };
+
+  const sel = useBulkSelection(rows || [], "id");
+  const bulkDelete = async () => {
+    if (!adminConfirm(`Remove ${sel.count} slide${sel.count === 1 ? "" : "s"}?`)) return;
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.del("/api/admin/hero-slides/" + id));
+    sel.clear(); load();
+  };
+  const bulkActive = async (active) => {
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.patch("/api/admin/hero-slides/" + id, { active }));
+    sel.clear(); load();
+  };
+
+  return (
+    <AdminShell active="hero" eyebrow="Homepage carousel" title={<>Hero <em>slides</em></>}>
+      <section className="form-section">
+        <h3>Add a <em>slide</em></h3>
+        <form onSubmit={add} className="form-grid-2">
+          <div className="field">
+            <label>Product</label>
+            <select className="input" value={pid} onChange={e => setPid(e.target.value)}>
+              <option value="">— pick a product —</option>
+              {products.map(p => <option key={p.id} value={p.id}>{p.name} {p.italic} — {p.brandName}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Custom tag (above the product name)</label>
+            <input className="input" value={tag} onChange={e => setTag(e.target.value)} placeholder="Pick of the week" />
+          </div>
+          <div><button className="btn-solid" disabled={!pid}>＋ Add slide</button></div>
+        </form>
+      </section>
+
+      {rows === null ? <p>Loading…</p> :
+       rows.length === 0 ? <div className="empty-admin"><h3>No slides yet</h3><p>The homepage hero will be empty until you add some.</p></div> :
+        <div className="dt-wrap">
+          <table className="dt">
+            <thead><tr>
+              <th className="bulk-cell"><BulkCheckHeader allSelected={sel.allSelected} some={sel.some} onToggleAll={sel.toggleAll} /></th>
+              <th></th><th>Order</th><th>Product</th><th>Custom tag</th><th>Active</th><th></th>
+            </tr></thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const p = productMap[r.product_id];
+                return (
+                  <tr key={r.id}>
+                    <td className="bulk-cell"><input type="checkbox" checked={sel.selected.has(r.id)} onChange={() => sel.toggle(r.id)} /></td>
+                    <td><div className={"thumb" + (p?.image ? "" : " empty")}>{p?.image ? <img src={p.image} alt="" /> : (p?.brandName || "?")[0]}</div></td>
+                    <td>
+                      <button type="button" disabled={i===0} onClick={() => move(r, -1)} style={{padding:"3px 6px"}}>↑</button>
+                      <button type="button" disabled={i===rows.length-1} onClick={() => move(r, +1)} style={{padding:"3px 6px"}}>↓</button>
+                    </td>
+                    <td>{p ? <><b>{p.name}</b> <em style={{fontFamily:"var(--font-serif)",color:"var(--wine)"}}>{p.italic}</em><br/><span style={{fontSize:11,color:"var(--ink-3)"}}>{p.brandName}</span></> : <span style={{color:"var(--wine)"}}>Product missing — {r.product_id}</span>}</td>
+                    <td><input className="input" defaultValue={r.custom_tag || ""} onBlur={e => e.target.value !== (r.custom_tag || "") && update(r, { custom_tag: e.target.value || null })} /></td>
+                    <td><button type="button" className={"chip-toggle" + (r.active ? " on" : "")} onClick={() => update(r, { active: !r.active })}>{r.active ? "Active" : "Hidden"}</button></td>
+                    <td className="row-actions"><button className="danger" onClick={() => del(r)}>Remove</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>}
+      <BulkBar count={sel.count} onClear={sel.clear}>
+        <button type="button" onClick={() => bulkActive(true)}>Activate</button>
+        <button type="button" onClick={() => bulkActive(false)}>Hide</button>
+        <button type="button" className="danger" onClick={bulkDelete}>Remove</button>
+      </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(HeroAdmin);
+</script>
+</body>
+</html>

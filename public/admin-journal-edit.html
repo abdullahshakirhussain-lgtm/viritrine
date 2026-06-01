@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Edit Post — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+const BLANK = {
+  slug: "", title: "", italic: "", excerpt: "", body: "",
+  tag: "", glyph: "", meta_title: "", meta_desc: "", sort: 0,
+  published: false, cover_image: null,
+};
+
+const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").slice(0, 80);
+
+function JournalEdit() {
+  const editingId = new URLSearchParams(window.location.search).get("id");
+  const [form, setForm] = React.useState(BLANK);
+  const [err, setErr] = React.useState("");
+  const [saved, setSaved] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  React.useEffect(() => {
+    if (!editingId) return;
+    window.api.get("/api/admin/journal/" + editingId).then(p => {
+      setForm({
+        slug: p.slug, title: p.title, italic: p.italic || "", excerpt: p.excerpt || "",
+        body: p.body || "", tag: p.tag || "", glyph: p.glyph || "",
+        meta_title: p.meta_title || "", meta_desc: p.meta_desc || "",
+        sort: p.sort || 0, published: !!p.published_at, cover_image: p.cover_image || null,
+      });
+    });
+  }, [editingId]);
+
+  const submit = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      if (editingId) await window.api.patch("/api/admin/journal/" + editingId, form);
+      else {
+        const r = await window.api.post("/api/admin/journal", form);
+        setTimeout(() => { window.location.href = "admin-journal-edit.html?id=" + r.id; }, 400);
+      }
+      setSaved(true); setTimeout(() => setSaved(false), 2400);
+    } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  };
+
+  const uploadCover = async (file) => {
+    if (!editingId) { alert("Save the post first, then upload a cover."); return; }
+    setBusy(true);
+    try {
+      const { url } = await adminUpload("journal", editingId, file);
+      set("cover_image", url);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+  const removeCover = async () => {
+    if (!editingId || !form.cover_image || !adminConfirm("Remove cover image?")) return;
+    await window.api.del("/api/admin/upload/journal/" + editingId);
+    set("cover_image", null);
+  };
+
+  // Auto-suggest slug from title (only when slug is empty)
+  React.useEffect(() => {
+    if (!editingId && !form.slug && form.title) set("slug", slugify(form.title));
+  }, [form.title]);
+
+  return (
+    <AdminShell active="journal" eyebrow={editingId ? (form.published ? "Published post" : "Draft") : "New post"} title={editingId ? form.title || "Untitled" : <>New <em>post</em></>}
+      actions={<><a href="admin-journal.html" className="btn-ghost">⟵ All posts</a>{editingId && form.published && <a href={"/journal/" + encodeURIComponent(form.slug)} target="_blank" className="btn-ghost">View ↗</a>}</>}>
+
+      {err && <div className="auth-error" style={{marginBottom:18}}>{err}</div>}
+      {saved && <div style={{padding:"10px 14px",background:"color-mix(in oklab, var(--teal) 12%, transparent)",color:"var(--teal)",marginBottom:18,fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase"}}>Saved ✓</div>}
+
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <div>
+            <section className="form-section">
+              <h3>The <em>post</em></h3>
+              <div className="form-grid-2">
+                <div className="field"><label>Title *</label><input className="input" required value={form.title} onChange={e => set("title", e.target.value)} placeholder="A Morning in" /></div>
+                <div className="field"><label>Italic suffix</label><input className="input" value={form.italic} onChange={e => set("italic", e.target.value)} placeholder="Kandy" /></div>
+              </div>
+              <div className="form-grid-3" style={{marginTop:14}}>
+                <div className="field"><label>Slug (URL) *</label><input className="input" required value={form.slug} onChange={e => set("slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,""))} placeholder="morning-in-kandy" /></div>
+                <div className="field"><label>Tag</label><input className="input" value={form.tag} onChange={e => set("tag", e.target.value)} placeholder="Ceylon / Brand / Ingredient…" /></div>
+                <div className="field"><label>Cover glyph</label><input className="input" value={form.glyph} onChange={e => set("glyph", e.target.value)} placeholder="K" maxLength={2} /></div>
+              </div>
+              <div className="field" style={{marginTop:14}}>
+                <label>Excerpt (1–2 sentences, shown in lists)</label>
+                <textarea value={form.excerpt} onChange={e => set("excerpt", e.target.value)} style={{minHeight:60}}></textarea>
+              </div>
+              <div className="field" style={{marginTop:14}}>
+                <label>Body (Markdown) *</label>
+                <textarea value={form.body} onChange={e => set("body", e.target.value)} style={{minHeight:360, fontFamily:"ui-monospace, SFMono-Regular, Consolas, monospace"}} placeholder="Write your story. Blank lines separate paragraphs.&#10;&#10;You can use **bold**, *italic*, [links](https://…), and # Headings."></textarea>
+                <p style={{color:"var(--ink-3)",fontSize:11,margin:"6px 0 0"}}>Plain prose works fine — blank lines become paragraph breaks. Basic Markdown is supported on the published page.</p>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>SEO &amp; <em>sharing</em></h3>
+              <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>What search engines and social previews show. Leave blank to fall back to the title + excerpt.</p>
+              <div className="field" style={{marginBottom:14}}>
+                <label>Meta title <span style={{textTransform:"none",color:"var(--ink-3)",letterSpacing:0}}>(≤ 60 chars ideal)</span></label>
+                <input className="input" value={form.meta_title} onChange={e => set("meta_title", e.target.value)} maxLength={200} />
+                <small style={{color:"var(--ink-3)",fontSize:11,marginTop:4}}>{(form.meta_title || "").length} chars</small>
+              </div>
+              <div className="field">
+                <label>Meta description <span style={{textTransform:"none",color:"var(--ink-3)",letterSpacing:0}}>(≤ 160 chars ideal)</span></label>
+                <textarea value={form.meta_desc} onChange={e => set("meta_desc", e.target.value)} style={{minHeight:60}} maxLength={400}></textarea>
+                <small style={{color:"var(--ink-3)",fontSize:11,marginTop:4}}>{(form.meta_desc || "").length} chars</small>
+              </div>
+            </section>
+          </div>
+
+          <aside>
+            <section className="form-section">
+              <h3>Cover <em>image</em></h3>
+              <div className="uploader">
+                <div className="uploader-preview">
+                  {form.cover_image
+                    ? <img src={form.cover_image} alt="" style={{objectFit:"cover"}} />
+                    : <div className="empty">No cover yet<br/>(glyph will be used)</div>}
+                </div>
+                <div className="uploader-row">
+                  <label>{form.cover_image ? "Replace" : "Upload"}
+                    <input type="file" accept="image/*" style={{display:"none"}}
+                           onChange={e => e.target.files[0] && uploadCover(e.target.files[0])} />
+                  </label>
+                  {form.cover_image && <button type="button" onClick={removeCover}>Remove</button>}
+                  <span className="meta">{editingId ? "PNG/JPG · up to 6 MB" : "Save the post first"}</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>Publish</h3>
+              <label className="toggle" style={{margin:"10px 0 18px",fontSize:14}}>
+                <input type="checkbox" checked={form.published} onChange={e => set("published", e.target.checked)} />
+                Published (visible on /journal.html)
+              </label>
+              <button type="submit" className="btn-solid" disabled={busy} style={{width:"100%",justifyContent:"center",padding:"14px 22px"}}>
+                {busy ? "Saving…" : editingId ? "Save changes" : "Create post ⟶"}
+              </button>
+            </section>
+          </aside>
+        </div>
+      </form>
+    </AdminShell>
+  );
+}
+
+mountAdmin(JournalEdit);
+</script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Locations — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function LocsAdmin() {
+  const [rows, setRows] = React.useState(null);
+  const [nl, setNl] = React.useState({ name: "", address: "", hours: "", phone: "" });
+  const load = () => window.api.get("/api/admin/locations").then(setRows);
+  React.useEffect(load, []);
+
+  const add = async (e) => {
+    e.preventDefault();
+    if (!nl.name.trim()) return;
+    await window.api.post("/api/admin/locations", nl);
+    setNl({ name: "", address: "", hours: "", phone: "" }); load();
+  };
+  const update = (r, p) => window.api.patch("/api/admin/locations/" + r.id, p).then(load);
+  const del = async (r) => { if (!adminConfirm("Delete this location?")) return; await window.api.del("/api/admin/locations/" + r.id); load(); };
+
+  const sel = useBulkSelection(rows || [], "id");
+  const bulkDelete = async () => {
+    if (!adminConfirm(`Delete ${sel.count} location${sel.count === 1 ? "" : "s"}?`)) return;
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.del("/api/admin/locations/" + id));
+    sel.clear(); load();
+  };
+  const bulkActive = async (active) => {
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.patch("/api/admin/locations/" + id, { active }));
+    sel.clear(); load();
+  };
+
+  return (
+    <AdminShell active="locations" eyebrow="Boutiques & pop-ups" title={<>Loc<em>ations</em></>}>
+      <section className="form-section">
+        <h3>Add a <em>location</em></h3>
+        <form onSubmit={add}>
+          <div className="form-grid-2">
+            <div className="field"><label>Name</label><input className="input" required value={nl.name} onChange={e => setNl({...nl, name: e.target.value})} placeholder="Galle Face — Colombo" /></div>
+            <div className="field"><label>Phone</label><input className="input" value={nl.phone} onChange={e => setNl({...nl, phone: e.target.value})} placeholder="+94 …" /></div>
+          </div>
+          <div className="form-grid-2" style={{marginTop:14}}>
+            <div className="field"><label>Address</label><textarea value={nl.address} onChange={e => setNl({...nl, address: e.target.value})} style={{minHeight:80}}></textarea></div>
+            <div className="field"><label>Hours</label><textarea value={nl.hours} onChange={e => setNl({...nl, hours: e.target.value})} style={{minHeight:80}}></textarea></div>
+          </div>
+          <button className="btn-solid" style={{marginTop:14}}>＋ Add location</button>
+        </form>
+      </section>
+
+      {rows === null ? <p>Loading…</p> :
+       rows.length === 0 ? <div className="empty-admin"><h3>No locations</h3></div> :
+       <>
+        <div style={{display:"flex",alignItems:"center",gap:10,margin:"4px 0 14px",padding:"4px",fontSize:12,color:"var(--ink-3)"}}>
+          <input type="checkbox" checked={sel.allSelected} onChange={sel.toggleAll} style={{accentColor:"var(--wine)",width:16,height:16,cursor:"pointer"}} />
+          <span>Select all</span>
+        </div>
+        {rows.map(r => (
+          <div className="form-section" key={r.id}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <input type="checkbox" checked={sel.selected.has(r.id)} onChange={() => sel.toggle(r.id)} style={{accentColor:"var(--wine)",width:16,height:16,cursor:"pointer"}} />
+                <h3 style={{margin:0}}>{r.name}</h3>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button type="button" className={"chip-toggle" + (r.active ? " on" : "")} onClick={() => update(r, { active: !r.active })}>{r.active ? "Active" : "Hidden"}</button>
+                <button type="button" className="chip-toggle" onClick={() => del(r)} style={{color:"var(--wine)",borderColor:"var(--wine)"}}>Delete</button>
+              </div>
+            </div>
+            <div className="form-grid-2">
+              <div className="field"><label>Name</label><input className="input" defaultValue={r.name} onBlur={e => e.target.value !== r.name && update(r, { name: e.target.value })} /></div>
+              <div className="field"><label>Phone</label><input className="input" defaultValue={r.phone || ""} onBlur={e => e.target.value !== (r.phone || "") && update(r, { phone: e.target.value })} /></div>
+            </div>
+            <div className="form-grid-2" style={{marginTop:14}}>
+              <div className="field"><label>Address</label><textarea defaultValue={r.address || ""} onBlur={e => e.target.value !== (r.address || "") && update(r, { address: e.target.value })} style={{minHeight:60}}></textarea></div>
+              <div className="field"><label>Hours</label><textarea defaultValue={r.hours || ""} onBlur={e => e.target.value !== (r.hours || "") && update(r, { hours: e.target.value })} style={{minHeight:60}}></textarea></div>
+            </div>
+          </div>
+        ))}
+       </>}
+
+      <BulkBar count={sel.count} onClear={sel.clear}>
+        <button type="button" onClick={() => bulkActive(true)}>Activate</button>
+        <button type="button" onClick={() => bulkActive(false)}>Hide</button>
+        <button type="button" className="danger" onClick={bulkDelete}>Delete</button>
+      </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(LocsAdmin);
+</script>
+</body>
+</html>

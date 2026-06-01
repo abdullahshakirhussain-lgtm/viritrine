@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Edit Product — VITRINE Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+const VARIANTS = ["jar","dropper","flacon","tube","compact","tall","apothecary"];
+const BLANK = {
+  id: "", brand_key: "", name: "", italic: "",
+  category: "", sub: "", size: "", variant: "jar",
+  liquid: "#6B1E3F", liquid_top: "#C49AAE",
+  copy: "",
+  price: 0, sale_price: null, off_pct: null,
+  is_new: false, is_bestseller: true, is_active: true,
+  stock: 25, concerns: [], notes: [],
+  image: null,
+  editor_pick_sort: null, editor_tag: "",
+};
+
+function ProductEdit() {
+  const editingId = new URLSearchParams(window.location.search).get("id");
+  const [form, setForm]   = React.useState(BLANK);
+  const [brands, setBrands]       = React.useState([]);
+  const [categories, setCategories] = React.useState([]);
+  const [concerns, setConcerns]   = React.useState([]);
+  const [busy, setBusy]   = React.useState(false);
+  const [pendingFile, setPendingFile] = React.useState(null);
+  const [pendingPreview, setPendingPreview] = React.useState(null);
+  const [err, setErr]     = React.useState("");
+  const [saved, setSaved] = React.useState(false);
+  const [noteText, setNoteText] = React.useState("");
+  const fileRef = React.useRef(null);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  React.useEffect(() => {
+    Promise.all([
+      window.api.get("/api/brands"),
+      window.api.get("/api/categories"),
+      window.api.get("/api/concerns"),
+    ]).then(([bs, cs, cn]) => {
+      setBrands(bs); setCategories(cs); setConcerns(cn);
+      if (!editingId) {
+        // sensible defaults
+        setForm(f => ({ ...f, brand_key: bs[0]?.key || "", category: cs[0]?.key || "" }));
+      }
+    });
+    if (editingId) {
+      window.api.get("/api/products/" + encodeURIComponent(editingId)).then(({ product: p }) => {
+        setForm({
+          id: p.id, brand_key: p.brand, name: p.name, italic: p.italic || "",
+          category: p.category, sub: p.sub || "", size: p.size || "",
+          variant: p.variant || "jar", liquid: p.liquid || "#6B1E3F", liquid_top: p.liquidTop || "#C49AAE",
+          copy: p.copy || "",
+          price: p.price, sale_price: p.sale || null, off_pct: p.off || null,
+          is_new: !!p.isNew, is_bestseller: !!p.isBestseller, is_active: p.isActive !== false,
+          stock: p.stock ?? 25, concerns: p.concerns || [], notes: p.notes || [],
+          image: p.image || null,
+          editor_pick_sort: p.editorPickSort,
+          editor_tag: p.editorTag || "",
+        });
+      }).catch(e => setErr(e.message));
+    }
+  }, [editingId]);
+
+  const submit = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      const body = { ...form };
+      if (body.sale_price === "" || body.sale_price === null) body.sale_price = null;
+      if (body.off_pct === "" || body.off_pct === null) body.off_pct = null;
+      body.price = Number(body.price) || 0;
+      body.sale_price = body.sale_price === null ? null : Number(body.sale_price);
+      body.off_pct = body.off_pct === null ? null : Number(body.off_pct);
+      body.stock = Number(body.stock) || 0;
+      body.editor_pick_sort = body.editor_pick_sort === "" || body.editor_pick_sort == null ? null : Number(body.editor_pick_sort);
+      if (!body.editor_tag) body.editor_tag = null;
+      if (editingId) {
+        await window.api.patch("/api/admin/products/" + encodeURIComponent(editingId), body);
+      } else {
+        await window.api.post("/api/admin/products", body);
+        // Upload the staged image now that the product exists.
+        if (pendingFile) {
+          try { await adminUpload("products", body.id, pendingFile); }
+          catch (uploadErr) { setErr("Product saved, but image upload failed: " + uploadErr.message); setBusy(false); return; }
+        }
+      }
+      setSaved(true);
+      setTimeout(() => { window.location.href = "admin-product-edit.html?id=" + encodeURIComponent(body.id); }, 600);
+    } catch (ex) {
+      setErr(ex.message + (ex.data?.details ? " · " + JSON.stringify(ex.data.details.fieldErrors) : ""));
+    } finally { setBusy(false); }
+  };
+
+  const uploadImage = async (file) => {
+    // For new products, stage the file in state — it'll upload right after the product is created.
+    if (!editingId) {
+      setPendingFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => setPendingPreview(e.target.result);
+      reader.readAsDataURL(file);
+      return;
+    }
+    setBusy(true); setErr("");
+    try {
+      const { url } = await adminUpload("products", editingId, file);
+      set("image", url);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const removeImage = async () => {
+    if (!editingId) { setPendingFile(null); setPendingPreview(null); return; }
+    if (!form.image) return;
+    if (!adminConfirm("Remove this image?")) return;
+    try { await window.api.del("/api/admin/upload/products/" + encodeURIComponent(editingId)); set("image", null); }
+    catch (e) { setErr(e.message); }
+  };
+
+  const toggleConcern = (k) => set("concerns", form.concerns.includes(k) ? form.concerns.filter(c => c !== k) : [...form.concerns, k]);
+  const addNote = () => { if (!noteText.trim()) return; set("notes", [...form.notes, noteText.trim()]); setNoteText(""); };
+  const removeNote = (i) => set("notes", form.notes.filter((_, idx) => idx !== i));
+
+  return (
+    <AdminShell active="products" eyebrow={editingId ? "Edit · " + editingId : "Add new"} title={editingId ? <>{form.name || "Untitled"} <em>{form.italic}</em></> : <>New <em>product</em></>}
+      actions={<><a href="admin-products.html" className="btn-ghost">⟵ All products</a></>}>
+
+      {err && <div className="auth-error" style={{marginBottom:18}}>{err}</div>}
+      {saved && <div style={{padding:"10px 14px",background:"color-mix(in oklab, var(--teal) 12%, transparent)",color:"var(--teal)",marginBottom:18,fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase"}}>Saved ✓</div>}
+
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <div>
+            <section className="form-section">
+              <h3>The <em>basics</em></h3>
+              <div className="form-grid-2">
+                <div className="field"><label>Product ID *</label>
+                  <input className="input" required value={form.id} onChange={e => set("id", e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g,""))} disabled={!!editingId} placeholder="e.g. ay-01" />
+                </div>
+                <div className="field"><label>Brand *</label>
+                  <select className="input" required value={form.brand_key} onChange={e => set("brand_key", e.target.value)}>
+                    <option value="">— pick —</option>
+                    {brands.map(b => <option key={b.key} value={b.key}>{b.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-grid-2" style={{marginTop:14}}>
+                <div className="field"><label>Name *</label>
+                  <input className="input" required value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Tea" />
+                </div>
+                <div className="field"><label>Italic suffix</label>
+                  <input className="input" value={form.italic || ""} onChange={e => set("italic", e.target.value)} placeholder="e.g. Glow" />
+                </div>
+              </div>
+              <div className="form-grid-3" style={{marginTop:14}}>
+                <div className="field"><label>Category *</label>
+                  <select className="input" required value={form.category} onChange={e => set("category", e.target.value)}>
+                    <option value="">— pick —</option>
+                    {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                  </select>
+                </div>
+                <div className="field"><label>Sub-type</label>
+                  <input className="input" value={form.sub || ""} onChange={e => set("sub", e.target.value)} placeholder="serum / mask / lip…" />
+                </div>
+                <div className="field"><label>Size</label>
+                  <input className="input" value={form.size || ""} onChange={e => set("size", e.target.value)} placeholder="50 ML" />
+                </div>
+              </div>
+              <div className="field" style={{marginTop:14}}>
+                <label>Description</label>
+                <textarea value={form.copy || ""} onChange={e => set("copy", e.target.value)} placeholder="Editorial product description…" style={{minHeight:120}}></textarea>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>Pricing &amp; <em>stock</em></h3>
+              <div className="form-grid-3">
+                <div className="field"><label>Price (LKR) *</label>
+                  <input className="input" type="number" required min="0" value={form.price} onChange={e => set("price", e.target.value)} />
+                </div>
+                <div className="field"><label>Sale price</label>
+                  <input className="input" type="number" min="0" value={form.sale_price ?? ""} onChange={e => set("sale_price", e.target.value === "" ? null : e.target.value)} placeholder="—" />
+                </div>
+                <div className="field"><label>% off</label>
+                  <input className="input" type="number" min="0" max="100" value={form.off_pct ?? ""} onChange={e => set("off_pct", e.target.value === "" ? null : e.target.value)} placeholder="—" />
+                </div>
+              </div>
+              <div className="field" style={{marginTop:14}}>
+                <label>Stock count</label>
+                <input className="input" type="number" min="0" value={form.stock} onChange={e => set("stock", e.target.value)} style={{maxWidth:160}} />
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>Editor's <em>pick</em></h3>
+              <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>Editor's picks appear on the homepage's "Shop the Shelf" rail, in the order set below. Leave the sort blank to hide from the homepage.</p>
+              <div className="form-grid-2">
+                <div className="field"><label>Sort (1 = first; blank = hidden)</label>
+                  <input className="input" type="number" min="0" value={form.editor_pick_sort ?? ""} onChange={e => set("editor_pick_sort", e.target.value === "" ? null : e.target.value)} placeholder="—" />
+                </div>
+                <div className="field"><label>Tag (shown on the tile)</label>
+                  <input className="input" value={form.editor_tag || ""} onChange={e => set("editor_tag", e.target.value)} placeholder="e.g. New / Ceylon / Iconic" />
+                </div>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>Tags &amp; <em>concerns</em></h3>
+              <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+                <label className="toggle"><input type="checkbox" checked={form.is_new} onChange={e => set("is_new", e.target.checked)} /> New arrival</label>
+                <label className="toggle"><input type="checkbox" checked={form.is_bestseller} onChange={e => set("is_bestseller", e.target.checked)} /> Bestseller</label>
+                <label className="toggle"><input type="checkbox" checked={form.is_active} onChange={e => set("is_active", e.target.checked)} /> Active (visible on shop)</label>
+              </div>
+              <label className="fld">Skin concerns</label>
+              <div style={{marginTop:8}}>
+                {concerns.map(c => (
+                  <button type="button" key={c.key}
+                          className={"chip-toggle" + (form.concerns.includes(c.key) ? " on" : "")}
+                          onClick={() => toggleConcern(c.key)}>{c.label}</button>
+                ))}
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>Ingredient <em>notes</em></h3>
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                <input className="input" value={noteText} onChange={e => setNoteText(e.target.value)} onKeyDown={e => e.key==="Enter" && (e.preventDefault(), addNote())} placeholder="e.g. Green Tea" style={{flex:1}} />
+                <button type="button" className="btn-ghost" onClick={addNote}>＋ Add</button>
+              </div>
+              {form.notes.length === 0 ? (
+                <p style={{color:"var(--ink-3)",fontSize:13,margin:0}}>No notes yet. Add the key ingredients buyers ask about.</p>
+              ) : (
+                <div>
+                  {form.notes.map((n, i) => (
+                    <span key={i} className="chip-toggle on" style={{cursor:"default"}}>
+                      {n} <button type="button" onClick={() => removeNote(i)} style={{marginLeft:8,background:"none",border:0,color:"currentColor",cursor:"pointer",fontSize:14}}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <aside>
+            <section className="form-section">
+              <h3>Product <em>image</em></h3>
+              <div className="uploader">
+                <div className="uploader-preview">
+                  {form.image
+                    ? <img src={form.image} alt="" />
+                    : pendingPreview
+                      ? <img src={pendingPreview} alt="" />
+                      : <div className="empty">No image uploaded<br/>(default bottle will be used)</div>}
+                </div>
+                <div className="uploader-row">
+                  <label>
+                    {(form.image || pendingPreview) ? "Replace" : "Upload"}
+                    <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}}
+                           onChange={e => e.target.files[0] && uploadImage(e.target.files[0])} />
+                  </label>
+                  {(form.image || pendingPreview) && <button type="button" onClick={removeImage}>Remove</button>}
+                  <span className="meta">
+                    {editingId ? "PNG/JPG/WEBP · up to 6 MB" :
+                     pendingPreview ? "Staged — will upload when you create the product" :
+                     "PNG/JPG/WEBP · up to 6 MB"}
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>Default <em>bottle</em></h3>
+              <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>Used when no image is uploaded — and as the loading placeholder.</p>
+              <div className="field" style={{marginBottom:14}}>
+                <label>Bottle shape</label>
+                <select className="input" value={form.variant || "jar"} onChange={e => set("variant", e.target.value)}>
+                  {VARIANTS.map(v => <option key={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="form-grid-2">
+                <div className="field"><label>Liquid (deep)</label>
+                  <div className="color-row">
+                    <input type="color" value={form.liquid || "#6B1E3F"} onChange={e => set("liquid", e.target.value)} />
+                    <input className="input" value={form.liquid || ""} onChange={e => set("liquid", e.target.value)} />
+                  </div>
+                </div>
+                <div className="field"><label>Liquid (top)</label>
+                  <div className="color-row">
+                    <input type="color" value={form.liquid_top || "#C49AAE"} onChange={e => set("liquid_top", e.target.value)} />
+                    <input className="input" value={form.liquid_top || ""} onChange={e => set("liquid_top", e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <button type="submit" className="btn-solid" disabled={busy} style={{width:"100%",justifyContent:"center",padding:"14px 22px"}}>
+                {busy ? "Saving…" : editingId ? "Save changes" : "Create product ⟶"}
+              </button>
+              {editingId && (
+                <a href={"product.html?id=" + encodeURIComponent(editingId)} target="_blank" className="btn-ghost" style={{display:"block",textAlign:"center",marginTop:10}}>View on site ↗</a>
+              )}
+            </section>
+          </aside>
+        </div>
+      </form>
+    </AdminShell>
+  );
+}
+
+mountAdmin(ProductEdit);
+</script>
+</body>
+</html>

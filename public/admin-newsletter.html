@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Newsletter — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function NewsletterAdmin() {
+  const [rows, setRows] = React.useState(null);
+  const load = () => window.api.get("/api/admin/newsletter").then(setRows);
+  React.useEffect(load, []);
+
+  const sel = useBulkSelection(rows || [], "email");
+  const bulkDelete = async () => {
+    if (!adminConfirm(`Remove ${sel.count} subscriber${sel.count === 1 ? "" : "s"}?`)) return;
+    await adminBulkRun(Array.from(sel.selected), (email) => window.api.del("/api/admin/newsletter/" + encodeURIComponent(email)));
+    sel.clear(); load();
+  };
+
+  const csv = () => {
+    if (!rows) return;
+    const txt = "email,subscribed_at\n" + rows.map(r => `"${r.email}","${new Date(r.created_at * 1000).toISOString()}"`).join("\n");
+    const blob = new Blob([txt], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `vitrine-newsletter-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  };
+
+  return (
+    <AdminShell active="newsletter" eyebrow={`${rows ? rows.length : "…"} subscribers`} title={<>News<em>letter</em></>}
+      actions={<button className="btn-solid" onClick={csv} disabled={!rows || rows.length === 0}>Download CSV ⟶</button>}>
+      {rows === null ? <p>Loading…</p> :
+       rows.length === 0 ? <div className="empty-admin"><h3>No subscribers yet</h3></div> :
+       <div className="dt-wrap">
+         <table className="dt">
+           <thead><tr>
+             <th className="bulk-cell"><BulkCheckHeader allSelected={sel.allSelected} some={sel.some} onToggleAll={sel.toggleAll} /></th>
+             <th>Email</th><th>Subscribed</th>
+           </tr></thead>
+           <tbody>
+             {rows.map(r => (
+               <tr key={r.email}>
+                 <td className="bulk-cell"><input type="checkbox" checked={sel.selected.has(r.email)} onChange={() => sel.toggle(r.email)} /></td>
+                 <td>{r.email}</td>
+                 <td>{adminFmtDate(r.created_at)}</td>
+               </tr>
+             ))}
+           </tbody>
+         </table>
+       </div>}
+      <BulkBar count={sel.count} onClear={sel.clear}>
+        <button type="button" className="danger" onClick={bulkDelete}>Unsubscribe</button>
+      </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(NewsletterAdmin);
+</script>
+</body>
+</html>

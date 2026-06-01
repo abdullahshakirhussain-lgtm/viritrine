@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Product — VITRINE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/nav.css" />
+<link rel="stylesheet" href="src/shop.css" />
+<link rel="stylesheet" href="src/pages.css" />
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/Bottle.jsx"></script>
+<script type="text/babel" src="src/data.jsx"></script>
+<script type="text/babel" src="src/chrome.jsx"></script>
+<script type="text/babel" src="src/nav.jsx"></script>
+<script type="text/babel" src="src/page-shell.jsx"></script>
+
+<script type="text/babel">
+function getParam(name) {
+  return new URLSearchParams(window.location.search).get(name);
+}
+// Pretty URL: /product/:id is equivalent to ?id=:id
+function getProductId() {
+  const m = window.location.pathname.match(/^\/product\/([^/?#]+)/i);
+  if (m) return decodeURIComponent(m[1]);
+  return getParam("id");
+}
+
+function PDP() {
+  const id = getProductId();
+  const [data, setData]   = React.useState(null);
+  const [qty, setQty]     = React.useState(1);
+  const [size, setSize]   = React.useState(null);
+  const [wishOn, setWishOn] = React.useState(false);
+  const [error, setError]   = React.useState(null);
+
+  React.useEffect(() => {
+    if (!id) { setError("No product selected."); return; }
+    window.api.get("/api/products/" + encodeURIComponent(id))
+      .then(r => { setData(r); setSize(r.product.size); })
+      .catch(e => setError(e.message || "Product not found"));
+    window.api.get("/api/wishlist")
+      .then(items => setWishOn(items.some(i => i.id === id)))
+      .catch(() => {});
+  }, [id]);
+
+  const onAdd = async () => {
+    try {
+      await window.api.post("/api/cart/items", { product_id: id, qty, size });
+      window.dispatchEvent(new CustomEvent("cart:changed"));
+      window.flash("Added to bag");
+    } catch (e) { window.flash(e.message || "Couldn't add", { err: true }); }
+  };
+
+  const onBuyNow = async () => {
+    await onAdd();
+    window.location.href = "checkout.html";
+  };
+
+  const toggleWish = async () => {
+    const me = await window.api.get("/api/auth/me").catch(() => ({ user: null }));
+    if (!me.user) { window.location.href = "login.html?next=" + encodeURIComponent("/product/" + id); return; }
+    try {
+      if (wishOn) await window.api.del("/api/wishlist/" + id);
+      else        await window.api.post("/api/wishlist/" + id);
+      setWishOn(!wishOn);
+      window.dispatchEvent(new CustomEvent("wishlist:changed"));
+    } catch {}
+  };
+
+  if (error) {
+    return (
+      <PageShell>
+        <div className="page-wrap">
+          <div className="empty-state">
+            <div className="glyph">
+              <svg viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01" strokeLinecap="round"/><circle cx="12" cy="12" r="9"/></svg>
+            </div>
+            <span className="eyebrow">Not Found</span>
+            <h2>That piece has <em>wandered off.</em></h2>
+            <p>{error}. It may have sold out, or the link wasn't quite right.</p>
+            <div className="actions">
+              <a className="btn-solid" href="Shop.html">Back to Shop ⟶</a>
+              <a className="btn-ghost"  href="/#brands">Browse brands</a>
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    );
+  }
+  if (!data) {
+    return (
+      <PageShell>
+        <div className="page-wrap">
+          <div className="pdp">
+            <div className="sk pdp-stage" style={{aspectRatio:"1 / 1.05"}}></div>
+            <div className="pdp-info">
+              <div className="sk-line short" style={{margin:"6px 0 18px"}}></div>
+              <div className="sk-line long"  style={{height:40,margin:"0 0 14px"}}></div>
+              <div className="sk-line long"  style={{margin:"6px 0"}}></div>
+              <div className="sk-line long"  style={{margin:"6px 0",width:"86%"}}></div>
+              <div className="sk-line long"  style={{margin:"6px 0",width:"60%"}}></div>
+              <div className="sk-line long"  style={{height:26,margin:"24px 0"}}></div>
+              <div style={{display:"flex",gap:10}}>
+                <div className="sk-line"     style={{height:46,width:170,margin:0}}></div>
+                <div className="sk-line"     style={{height:46,width:120,margin:0}}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    );
+  }
+
+  const { product: p, related } = data;
+  const b = (BRANDS && BRANDS[p.brand]) || { name: p.brandName, loc: p.brandLoc };
+  const now = p.sale || p.price;
+  const sizes = p.size ? [p.size, p.size.replace(/(\d+)/, m => +m * 2), p.size.replace(/(\d+)/, m => +m / 2)].filter((v, i, a) => a.indexOf(v) === i).slice(0, 3) : [];
+
+  return (
+    <PageShell>
+      <div className="page-wrap">
+        <div className="crumb" style={{padding:"4px 0 28px",fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",color:"var(--ink-3)"}}>
+          <a href="/">Home</a> &nbsp;/&nbsp; <a href="Shop.html">Shop</a> &nbsp;/&nbsp; <a href={"Shop.html#cat=" + p.category}>{p.category}</a> &nbsp;/&nbsp; <span style={{color:"var(--ink-2)"}}>{p.name} {p.italic}</span>
+        </div>
+
+        <div className="pdp">
+          <div className="pdp-stage" data-brand-accent={b.accent || ""} style={{"--brand-accent": b.accent}}>
+            {p.isNew && <div className="pulse"><i></i> New</div>}
+            <div className="ref">Réf. {p.id.toUpperCase()}</div>
+            <div className="stage-inner" data-monogram={(b.name || "")[0]} style={{"--brand-accent": b.accent}}>
+              <ProductVisual image={p.image} variant={p.variant} brand={b} product={{ name: p.italic }} liquid={p.liquid} liquidTop={p.liquidTop} />
+            </div>
+          </div>
+
+          <div className="pdp-info">
+            <div className="pdp-brand"><span>{b.name}</span><span className="dot"></span><span>{b.loc}</span></div>
+            <h1 className="pdp-name">{p.name} <em>{p.italic}</em></h1>
+            <div className="pdp-rate"><span className="stars">★★★★★</span><span>4.8 · 124 reviews</span></div>
+            <p className="pdp-copy">{p.copy}</p>
+            {p.notes?.length > 0 && (
+              <div className="pdp-notes">{p.notes.map((n, i) => <span key={i} className="pdp-note">{n}</span>)}</div>
+            )}
+            <div className="pdp-prices">
+              <span className="now">{window.fmtLKR(now * qty)}</span>
+              {p.sale && <><span className="was">{window.fmtLKR(p.price * qty)}</span><span className="off">−{p.off}%</span></>}
+            </div>
+
+            {sizes.length > 1 && (<>
+              <label className="fld">Size</label>
+              <div className="qv-sizes">
+                {sizes.map(s => (
+                  <button key={s} className={"qv-size" + (s === size ? " active" : "")} onClick={() => setSize(s)}>{s}</button>
+                ))}
+              </div>
+            </>)}
+
+            <div className="pdp-row">
+              <div className="pdp-qty">
+                <button onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
+                <span>{qty}</span>
+                <button onClick={() => setQty(qty + 1)}>+</button>
+              </div>
+              <div style={{fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",color:"var(--ink-3)"}}>
+                {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
+              </div>
+            </div>
+
+            <div className="pdp-actions">
+              <button className="btn-solid" onClick={onAdd}>Add to Bag <span>⟶</span></button>
+              <button className="btn-ghost" onClick={onBuyNow}>Buy Now</button>
+              <button className={"pdp-wish" + (wishOn ? " on" : "")} onClick={toggleWish} aria-label="Wishlist">
+                <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
+
+            <div className="pdp-meta-grid">
+              <div><b>Delivery</b>Free over LKR 25,000<br/>2–4 business days, island-wide</div>
+              <div><b>Returns</b>14 days, unopened</div>
+              <div><b>Made in</b>{b.loc}</div>
+              <div><b>Volume</b>{p.size}</div>
+            </div>
+          </div>
+        </div>
+
+        {related?.length > 0 && (
+          <div className="pdp-related">
+            <h3>You may also <em>like</em></h3>
+            <div className="edit-scroller-wrap"><div className="edit-scroller">
+              {related.map((r, i) => {
+                const rb = (BRANDS && BRANDS[r.brand]) || { name: r.brandName };
+                return (
+                  <a key={i} className="product" href={"/product/" + r.id} style={{textDecoration:"none"}}>
+                    <div className="product-stage" data-monogram={(rb.name || "")[0]} style={{"--brand-accent": rb.accent}}><ProductVisual image={r.image} variant={r.variant} brand={rb} product={{name:r.italic}} liquid={r.liquid} liquidTop={r.liquidTop}/></div>
+                    <div className="product-brand">{rb.name}</div>
+                    <h3 className="product-name">{r.name} <em>{r.italic}</em></h3>
+                    <div className="product-row">
+                      <div className="product-meta">{r.sub}</div>
+                      <div className="product-price">{window.fmtLKR(r.sale || r.price)}</div>
+                    </div>
+                  </a>
+                );
+              })}
+            </div></div>
+          </div>
+        )}
+      </div>
+    </PageShell>
+  );
+}
+
+mountPage(PDP);
+</script>
+</body>
+</html>

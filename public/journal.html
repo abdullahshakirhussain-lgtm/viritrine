@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stories — VITRINE</title>
+<meta name="description" content="Field notes, brand stories and ingredient deep-dives from VITRINE — a Colombo multi-brand beauty boutique." />
+<meta property="og:title"       content="The VITRINE Journal" />
+<meta property="og:description" content="Field notes, brand stories and ingredient deep-dives from a Colombo beauty shop." />
+<meta property="og:type"        content="website" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/nav.css" />
+<link rel="stylesheet" href="src/pages.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/Bottle.jsx"></script>
+<script type="text/babel" src="src/data.jsx"></script>
+<script type="text/babel" src="src/chrome.jsx"></script>
+<script type="text/babel" src="src/nav.jsx"></script>
+<script type="text/babel" src="src/page-shell.jsx"></script>
+
+<script type="text/babel">
+function JournalIndex() {
+  const [posts, setPosts] = React.useState(null);
+  React.useEffect(() => { window.api.get("/api/journal?limit=100").then(setPosts).catch(() => setPosts([])); }, []);
+  const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+
+  return (
+    <PageShell>
+      <div className="page-wrap">
+        <div className="page-head">
+          <div className="eyebrow"><span>Field notes, brand stories &amp; ingredients</span></div>
+          <h1>The <em>Stories</em></h1>
+          <p>Notes from the shop. Brand origins, ingredient journeys, and the small choices behind every piece on our shelf.</p>
+        </div>
+
+        {posts === null ? <p>Loading…</p> :
+         posts.length === 0 ? (
+           <div className="empty-state">
+             <div className="glyph"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" strokeLinejoin="round"/><path d="M8 9h8M8 13h8M8 17h5"/></svg></div>
+             <span className="eyebrow">Nothing here yet</span>
+             <h2>The first <em>story</em> is on its way.</h2>
+             <p>Check back soon — or sign up for the monthly letter to be the first to know.</p>
+             <div className="actions"><a href="/" className="btn-solid">Back to shop ⟶</a></div>
+           </div>
+         ) : (
+          <div className="journal-index">
+            {posts.map(p => (
+              <a key={p.id} className="journal-card" href={"/journal/" + encodeURIComponent(p.slug)}>
+                <div className="cover">
+                  {p.tag && <span className="tag">{p.tag}</span>}
+                  {p.cover_image
+                    ? <img src={p.cover_image} alt="" />
+                    : <div className="glyph">{p.glyph || (p.title || "?")[0]}</div>}
+                </div>
+                <div className="body">
+                  <div className="meta">{fmtDate(p.published_at)}</div>
+                  <h3>{p.title} <em>{p.italic}</em></h3>
+                  <p>{p.excerpt}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </PageShell>
+  );
+}
+
+mountPage(JournalIndex);
+</script>
+</body>
+</html>

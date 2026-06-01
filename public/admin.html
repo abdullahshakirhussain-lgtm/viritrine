@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin — VITRINE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function Dashboard() {
+  const [stats, setStats] = React.useState(null);
+  React.useEffect(() => {
+    window.api.get("/api/admin/stats").then(setStats);
+  }, []);
+
+  if (!stats) return <AdminShell active="dashboard" title="Dashboard"><p>Loading…</p></AdminShell>;
+
+  return (
+    <AdminShell active="dashboard" eyebrow="At a glance" title={<>Welcome <em>back</em>.</>}>
+      <div className="stat-grid">
+        <div className="stat-card"><div className="l">Revenue</div><div className="v">{adminFmtMoney(stats.revenue)}</div></div>
+        <div className="stat-card"><div className="l">Orders</div><div className="v">{stats.orders} <em>· {stats.pending} open</em></div></div>
+        <div className="stat-card"><div className="l">Products</div><div className="v">{stats.products}</div></div>
+        <div className="stat-card"><div className="l">Brands</div><div className="v">{stats.brands}</div></div>
+        <div className="stat-card"><div className="l">Customers</div><div className="v">{stats.users}</div></div>
+        <div className="stat-card"><div className="l">Newsletter</div><div className="v">{stats.newsletter}</div></div>
+        <div className="stat-card"><div className="l">Messages</div><div className="v">{stats.messages}</div></div>
+      </div>
+
+      <div className="form-section">
+        <h3>Recent <em>orders</em></h3>
+        {stats.recentOrders.length === 0 ? (
+          <div className="empty-admin"><h3>No orders yet</h3><p>Orders will land here as they come in.</p></div>
+        ) : (
+          <div className="dt-wrap">
+            <table className="dt">
+              <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Date</th><th className="num">Total</th><th></th></tr></thead>
+              <tbody>
+                {stats.recentOrders.map(o => (
+                  <tr key={o.id}>
+                    <td><b>{o.number}</b></td>
+                    <td>{o.email}</td>
+                    <td><span className={"pill " + o.status}>{o.status.replace("_", " ")}</span></td>
+                    <td>{adminFmtDate(o.created_at)}</td>
+                    <td className="num">{adminFmtMoney(o.total)}</td>
+                    <td className="row-actions"><a href={"admin-orders.html?id=" + o.id}>View</a></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div style={{marginTop:14}}><a href="admin-orders.html" className="btn-ghost">All orders ⟶</a></div>
+      </div>
+
+      <div className="form-grid">
+        <div className="form-section">
+          <h3>Quick <em>actions</em></h3>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <a className="btn-solid" href="admin-product-edit.html">＋ Add a new product</a>
+            <a className="btn-ghost"  href="admin-brand-edit.html">＋ Add a brand</a>
+            <a className="btn-ghost"  href="admin-categories.html">Manage categories</a>
+          </div>
+        </div>
+        <div className="form-section">
+          <h3>Help</h3>
+          <p style={{color:"var(--ink-2)",fontSize:13,lineHeight:1.6,margin:0}}>
+            All catalogue changes go live instantly — no rebuild needed. Uploaded product images replace the default bottle illustration on the shop. Hide a product from the storefront by toggling <b>Active</b> off in the product editor.
+          </p>
+        </div>
+      </div>
+    </AdminShell>
+  );
+}
+
+mountAdmin(Dashboard);
+</script>
+</body>
+</html>

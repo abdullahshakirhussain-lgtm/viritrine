@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Edit Brand — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+const FONTS = [
+  { v: "Italiana, serif", l: "Italiana (display)" },
+  { v: "Cormorant Garamond, serif", l: "Cormorant (italic-friendly)" },
+  { v: "Manrope, sans-serif", l: "Manrope (sans)" },
+];
+const CASES = ["upper", "title"];
+
+const BLANK = { key: "", name: "", font: "Italiana, serif", case_: "upper", accent: "#6B1E3F", tagline: "", loc: "", cat: "", image: null };
+
+function BrandEdit() {
+  const editingKey = new URLSearchParams(window.location.search).get("key");
+  const [form, setForm] = React.useState(BLANK);
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+  const [pendingFile, setPendingFile] = React.useState(null); // staged file before brand exists
+  const [pendingPreview, setPendingPreview] = React.useState(null);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  React.useEffect(() => {
+    if (editingKey) {
+      window.api.get("/api/admin/brands").then(rows => {
+        const b = rows.find(r => r.key === editingKey);
+        if (b) setForm({ ...BLANK, ...b });
+      });
+    }
+  }, [editingKey]);
+
+  const submit = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      const body = { ...form };
+      if (editingKey) {
+        await window.api.patch("/api/admin/brands/" + encodeURIComponent(editingKey), body);
+      } else {
+        await window.api.post("/api/admin/brands", body);
+        // If the user picked a logo BEFORE saving, upload it now that the brand exists.
+        if (pendingFile) {
+          try { await adminUpload("brands", body.key, pendingFile); }
+          catch (uploadErr) { setErr("Brand saved, but logo upload failed: " + uploadErr.message); setBusy(false); return; }
+        }
+      }
+      setSaved(true);
+      setTimeout(() => { window.location.href = "admin-brand-edit.html?key=" + encodeURIComponent(body.key); }, 500);
+    } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  };
+
+  // If brand already exists, upload immediately. If not, just stage the file + show a local preview.
+  const uploadImage = async (file) => {
+    if (!editingKey) {
+      setPendingFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => setPendingPreview(e.target.result);
+      reader.readAsDataURL(file);
+      return;
+    }
+    setBusy(true); setErr("");
+    try {
+      const { url } = await adminUpload("brands", editingKey, file);
+      set("image", url);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+  const removeImage = async () => {
+    // If we only have a staged file (no brand yet), just drop it from state.
+    if (!editingKey) {
+      setPendingFile(null); setPendingPreview(null);
+      return;
+    }
+    if (!form.image || !adminConfirm("Remove this logo?")) return;
+    try { await window.api.del("/api/admin/upload/brands/" + encodeURIComponent(editingKey)); set("image", null); }
+    catch (e) { setErr(e.message); }
+  };
+
+  return (
+    <AdminShell active="brands" eyebrow={editingKey ? "Edit · " + editingKey : "Add new"} title={editingKey ? <>{form.name || "Untitled"}</> : <>New <em>brand</em></>}
+      actions={<a href="admin-brands.html" className="btn-ghost">⟵ All brands</a>}>
+
+      {err && <div className="auth-error" style={{marginBottom:18}}>{err}</div>}
+      {saved && <div style={{padding:"10px 14px",background:"color-mix(in oklab, var(--teal) 12%, transparent)",color:"var(--teal)",marginBottom:18,fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase"}}>Saved ✓</div>}
+
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <div>
+            <section className="form-section">
+              <h3>The <em>brand</em></h3>
+              <div className="form-grid-2">
+                <div className="field"><label>Brand key *</label>
+                  <input className="input" required value={form.key} onChange={e => set("key", e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g,""))} disabled={!!editingKey} placeholder="e.g. ayana" />
+                </div>
+                <div className="field"><label>Display name *</label>
+                  <input className="input" required value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. AYANA" />
+                </div>
+              </div>
+              <div className="form-grid-2" style={{marginTop:14}}>
+                <div className="field"><label>Tagline</label>
+                  <input className="input" value={form.tagline || ""} onChange={e => set("tagline", e.target.value)} placeholder="e.g. CEYLON · 2017" />
+                </div>
+                <div className="field"><label>Location</label>
+                  <input className="input" value={form.loc || ""} onChange={e => set("loc", e.target.value)} placeholder="e.g. Colombo" />
+                </div>
+              </div>
+              <div className="field" style={{marginTop:14}}>
+                <label>Category description</label>
+                <input className="input" value={form.cat || ""} onChange={e => set("cat", e.target.value)} placeholder="e.g. Tea-infused Skin" />
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>Type<em>setting</em></h3>
+              <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>How the brand name is rendered in the wall, footers, and product cards.</p>
+              <div className="form-grid-2">
+                <div className="field"><label>Font</label>
+                  <select className="input" value={form.font || ""} onChange={e => set("font", e.target.value)}>
+                    {FONTS.map(f => <option key={f.v} value={f.v}>{f.l}</option>)}
+                  </select>
+                </div>
+                <div className="field"><label>Case</label>
+                  <select className="input" value={form.case_ || "upper"} onChange={e => set("case_", e.target.value)}>
+                    {CASES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="field" style={{marginTop:14}}>
+                <label>Accent colour</label>
+                <div className="color-row">
+                  <input type="color" value={form.accent || "#6B1E3F"} onChange={e => set("accent", e.target.value)} />
+                  <input className="input" value={form.accent || ""} onChange={e => set("accent", e.target.value)} />
+                </div>
+              </div>
+              <div style={{marginTop:18,padding:"24px",background:"var(--bg-2)",border:"1px solid var(--line)",textAlign:"center"}}>
+                <span style={{fontFamily:form.font, fontSize:32, textTransform:form.case_==="upper"?"uppercase":"none", letterSpacing:form.case_==="upper"?"0.08em":"normal", color:form.accent}}>
+                  {form.name || "Brand name"}
+                </span>
+                <div style={{fontSize:10.5,letterSpacing:"0.22em",textTransform:"uppercase",color:"var(--ink-3)",marginTop:8}}>{form.tagline}</div>
+              </div>
+            </section>
+          </div>
+
+          <aside>
+            <section className="form-section">
+              <h3>Brand <em>logo</em></h3>
+              <div className="uploader">
+                <div className="uploader-preview">
+                  {form.image
+                    ? <img src={form.image} alt="" />
+                    : pendingPreview
+                      ? <img src={pendingPreview} alt="" />
+                      : <div className="empty">No logo uploaded<br/>(typeset name will be used)</div>}
+                </div>
+                <div className="uploader-row">
+                  <label>{form.image || pendingPreview ? "Replace" : "Upload"}
+                    <input type="file" accept="image/*" style={{display:"none"}}
+                           onChange={e => e.target.files[0] && uploadImage(e.target.files[0])} />
+                  </label>
+                  {(form.image || pendingPreview) && <button type="button" onClick={removeImage}>Remove</button>}
+                  <span className="meta">
+                    {editingKey ? "PNG/SVG · up to 6 MB" :
+                     pendingPreview ? "Staged — will upload when you create the brand" :
+                     "PNG/SVG · up to 6 MB"}
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <button type="submit" className="btn-solid" disabled={busy} style={{width:"100%",justifyContent:"center",padding:"14px 22px"}}>
+                {busy ? "Saving…" : editingKey ? "Save changes" : "Create brand ⟶"}
+              </button>
+            </section>
+          </aside>
+        </div>
+      </form>
+    </AdminShell>
+  );
+}
+
+mountAdmin(BrandEdit);
+</script>
+</body>
+</html>

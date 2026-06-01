@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Orders — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+const STATUSES = ["pending","awaiting_payment","paid","shipped","delivered","cancelled","refunded"];
+
+function OrdersAdmin() {
+  const focusId = new URLSearchParams(window.location.search).get("id");
+  const [orders, setOrders] = React.useState(null);
+  const [open, setOpen]     = React.useState(null);
+  const [filter, setFilter] = React.useState("");
+  const load = () => window.api.get("/api/admin/orders").then(setOrders);
+  React.useEffect(() => {
+    load();
+    if (focusId) window.api.get("/api/admin/orders/" + focusId).then(setOpen);
+  }, []);
+
+  const openOrder = (id) => window.api.get("/api/admin/orders/" + id).then(setOpen);
+  const updateStatus = async (id, status) => {
+    try {
+      await window.api.patch("/api/admin/orders/" + id, { status });
+      load();
+      if (open && open.order.id === id) openOrder(id);
+    } catch (e) { alert(e.message); }
+  };
+
+  const filtered = (orders || []).filter(o => !filter || o.status === filter);
+
+  const sel = useBulkSelection(filtered, "id");
+  const [bulkStatus, setBulkStatus] = React.useState("");
+  const applyBulkStatus = async () => {
+    if (!bulkStatus) return;
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.patch("/api/admin/orders/" + id, { status: bulkStatus }));
+    sel.clear(); setBulkStatus(""); load();
+  };
+  const delOne = async (o) => {
+    if (!adminConfirm(`Delete order ${o.number}? This cannot be undone.`)) return;
+    try {
+      await window.api.del("/api/admin/orders/" + o.id);
+      if (open && open.order.id === o.id) setOpen(null);
+      load();
+    } catch (e) { alert(e.message); }
+  };
+  const bulkDelete = async () => {
+    if (!adminConfirm(`Delete ${sel.count} order${sel.count === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    const { ok, failed } = await adminBulkRun(Array.from(sel.selected), (id) => window.api.del("/api/admin/orders/" + id));
+    sel.clear(); load();
+    if (failed.length) alert(`${ok.length} deleted · ${failed.length} failed`);
+  };
+
+  return (
+    <AdminShell active="orders" eyebrow={`${orders ? orders.length : "…"} total`} title={<>Or<em>ders</em></>}>
+      <div className="admin-toolbar">
+        <select className="search" style={{flex:"0 0 200px"}} value={filter} onChange={e => setFilter(e.target.value)}>
+          <option value="">All statuses</option>
+          {STATUSES.map(s => <option key={s} value={s}>{s.replace("_"," ")}</option>)}
+        </select>
+      </div>
+
+      {orders === null ? <p>Loading…</p> :
+       filtered.length === 0 ? <div className="empty-admin"><h3>No orders</h3></div> :
+       (
+        <div className="dt-wrap">
+          <table className="dt">
+            <thead><tr>
+              <th className="bulk-cell"><BulkCheckHeader allSelected={sel.allSelected} some={sel.some} onToggleAll={sel.toggleAll} /></th>
+              <th>Order</th><th>Customer</th><th>Status</th><th>Date</th><th className="num">Total</th><th></th>
+            </tr></thead>
+            <tbody>
+              {filtered.map(o => (
+                <tr key={o.id}>
+                  <td className="bulk-cell"><input type="checkbox" checked={sel.selected.has(o.id)} onChange={() => sel.toggle(o.id)} /></td>
+                  <td><b>{o.number}</b></td>
+                  <td>{o.full_name}<br/><span style={{fontSize:11,color:"var(--ink-3)"}}>{o.email}</span></td>
+                  <td><span className={"pill " + o.status}>{o.status.replace("_"," ")}</span></td>
+                  <td>{adminFmtDate(o.created_at)}</td>
+                  <td className="num">{adminFmtMoney(o.total)}</td>
+                  <td className="row-actions">
+                    <button onClick={() => openOrder(o.id)}>Open</button>
+                    <button className="danger" onClick={() => delOne(o)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <BulkBar count={sel.count} onClear={sel.clear}>
+        <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}>
+          <option value="">Set status…</option>
+          {STATUSES.map(s => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+        </select>
+        <button type="button" onClick={applyBulkStatus} disabled={!bulkStatus}>Apply</button>
+        <button type="button" className="danger" onClick={bulkDelete}>Delete</button>
+      </BulkBar>
+
+      {open && (
+        <>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:90}} onClick={() => setOpen(null)}></div>
+          <div style={{position:"fixed",top:"5vh",bottom:"5vh",left:"50%",transform:"translateX(-50%)",width:"min(720px,94vw)",background:"var(--paper)",zIndex:91,overflowY:"auto",border:"1px solid var(--line)"}}>
+            <div style={{padding:"22px 26px",borderBottom:"1px solid var(--line)",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <span className="eyebrow">Order</span>
+                <h2 style={{fontFamily:"var(--font-display)",fontSize:32,margin:"4px 0"}}>{open.order.number}</h2>
+                <span className={"pill " + open.order.status}>{open.order.status.replace("_"," ")}</span>
+              </div>
+              <button onClick={() => setOpen(null)} className="btn-ghost">✕</button>
+            </div>
+            <div style={{padding:"22px 26px"}}>
+              <div className="form-grid-2">
+                <div>
+                  <div className="eyebrow" style={{marginBottom:6}}>Customer</div>
+                  <div style={{fontSize:14}}>{open.order.full_name}<br/>{open.order.email}<br/>{open.order.phone}</div>
+                </div>
+                <div>
+                  <div className="eyebrow" style={{marginBottom:6}}>Shipping</div>
+                  <div style={{fontSize:14}}>{open.order.line1}<br/>{open.order.line2 && <>{open.order.line2}<br/></>}{open.order.city} {open.order.postcode}</div>
+                </div>
+              </div>
+
+              <div style={{marginTop:22}}>
+                <div className="eyebrow" style={{marginBottom:8}}>Items</div>
+                {open.items.map(it => (
+                  <div key={it.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px dashed var(--line)"}}>
+                    <div><b>{it.name}</b> <em style={{fontFamily:"var(--font-serif)",color:"var(--wine)"}}>{it.italic}</em> · ×{it.qty}</div>
+                    <div>{adminFmtMoney(it.line_total)}</div>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginTop:14}}><span>Subtotal</span><span>{adminFmtMoney(open.order.subtotal)}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}><span>Delivery</span><span>{open.order.shipping === 0 ? "Free" : adminFmtMoney(open.order.shipping)}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between",fontFamily:"var(--font-display)",fontSize:22,marginTop:8}}><span>Total</span><b>{adminFmtMoney(open.order.total)}</b></div>
+              </div>
+
+              <div style={{marginTop:22}}>
+                <div className="eyebrow" style={{marginBottom:8}}>Update status</div>
+                <div>
+                  {STATUSES.map(s => (
+                    <button type="button" key={s}
+                            className={"chip-toggle" + (open.order.status === s ? " on" : "")}
+                            onClick={() => updateStatus(open.order.id, s)}>{s.replace("_"," ")}</button>
+                  ))}
+                </div>
+              </div>
+
+              {open.order.note && (<div style={{marginTop:22,padding:14,background:"var(--bg-2)",border:"1px solid var(--line)",fontSize:13}}>
+                <div className="eyebrow" style={{marginBottom:4}}>Customer note</div>
+                {open.order.note}
+              </div>)}
+            </div>
+          </div>
+        </>
+      )}
+    </AdminShell>
+  );
+}
+
+mountAdmin(OrdersAdmin);
+</script>
+</body>
+</html>

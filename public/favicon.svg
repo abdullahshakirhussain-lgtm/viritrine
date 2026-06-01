@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="8" fill="#EFE6D2"/>
+  <text x="32" y="44" text-anchor="middle"
+        font-family="Italiana, 'Cormorant Garamond', serif"
+        font-size="44" fill="#5A1430" font-weight="400" letter-spacing="0.02em">V</text>
+</svg>

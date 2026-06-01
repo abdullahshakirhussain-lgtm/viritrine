@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Create Account — VITRINE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/nav.css" />
+<link rel="stylesheet" href="src/pages.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/Bottle.jsx"></script>
+<script type="text/babel" src="src/data.jsx"></script>
+<script type="text/babel" src="src/chrome.jsx"></script>
+<script type="text/babel" src="src/nav.jsx"></script>
+<script type="text/babel" src="src/page-shell.jsx"></script>
+
+<script type="text/babel">
+function SignupPage() {
+  const [form, setForm] = React.useState({ first_name: "", last_name: "", email: "", phone: "", password: "" });
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const next = new URLSearchParams(window.location.search).get("next") || "account.html";
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(""); setBusy(true);
+    try {
+      await window.api.post("/api/auth/signup", form);
+      window.location.href = next;
+    } catch (ex) {
+      setErr(ex.message || "Couldn't create account");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <PageShell>
+      <div className="auth-wrap">
+        <div className="eyebrow"><span>New · 30-second sign up</span></div>
+        <h1>Create an <em>account</em>.</h1>
+        <p className="sub">Track orders, save your wishlist, and check out faster next time.</p>
+        <div className="auth-card">
+          <form onSubmit={submit}>
+            {err && <div className="auth-error">{err}</div>}
+            <div className="field"><label>First name</label>
+              <input className="input" required value={form.first_name} onChange={e => set("first_name", e.target.value)} />
+            </div>
+            <div className="field"><label>Last name</label>
+              <input className="input" value={form.last_name} onChange={e => set("last_name", e.target.value)} />
+            </div>
+            <div className="field"><label>Email</label>
+              <input className="input" type="email" required value={form.email} onChange={e => set("email", e.target.value)} />
+            </div>
+            <div className="field"><label>Phone</label>
+              <input className="input" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="+94 7…" />
+            </div>
+            <div className="field"><label>Password</label>
+              <input className="input" type="password" required minLength="6" value={form.password} onChange={e => set("password", e.target.value)} />
+            </div>
+            <button className="btn-solid" disabled={busy}>{busy ? "Creating…" : <>Create Account <span>⟶</span></>}</button>
+          </form>
+          <div className="alt">
+            Already have an account? <a href={"login.html?next=" + encodeURIComponent(next)}>Sign in</a>
+          </div>
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+mountPage(SignupPage);
+</script>
+</body>
+</html>

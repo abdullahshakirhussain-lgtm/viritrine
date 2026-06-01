@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Messages — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function MessagesAdmin() {
+  const [rows, setRows] = React.useState(null);
+  const load = () => window.api.get("/api/admin/contact").then(setRows);
+  React.useEffect(load, []);
+  const sel = useBulkSelection(rows || [], "id");
+  const bulkDelete = async () => {
+    if (!adminConfirm(`Delete ${sel.count} message${sel.count === 1 ? "" : "s"}?`)) return;
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.del("/api/admin/contact/" + id));
+    sel.clear(); load();
+  };
+  return (
+    <AdminShell active="messages" eyebrow={`${rows ? rows.length : "…"} received`} title={<>Mess<em>ages</em></>}>
+      {rows === null ? <p>Loading…</p> :
+       rows.length === 0 ? <div className="empty-admin"><h3>No messages yet</h3><p>Contact form submissions land here.</p></div> :
+       <>
+         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"8px 4px",fontSize:12,color:"var(--ink-3)"}}>
+           <input type="checkbox" checked={sel.allSelected} onChange={sel.toggleAll} style={{accentColor:"var(--wine)",width:16,height:16,cursor:"pointer"}} />
+           <span>Select all</span>
+         </div>
+         {rows.map(m => (
+           <div key={m.id} className="form-section">
+             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:12}}>
+               <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+                 <input type="checkbox" checked={sel.selected.has(m.id)} onChange={() => sel.toggle(m.id)} style={{accentColor:"var(--wine)",width:16,height:16,cursor:"pointer",marginTop:6}} />
+                 <div>
+                   <div style={{fontFamily:"var(--font-display)",fontSize:20}}>{m.subject || "(no subject)"}</div>
+                   <div style={{fontSize:12,color:"var(--ink-3)",marginTop:4}}>From <b>{m.name}</b> · <a href={"mailto:" + m.email} style={{color:"var(--wine)"}}>{m.email}</a></div>
+                 </div>
+               </div>
+               <div style={{fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",color:"var(--ink-3)"}}>{adminFmtDate(m.created_at)}</div>
+             </div>
+             <p style={{margin:0,whiteSpace:"pre-wrap",fontSize:14,lineHeight:1.6,color:"var(--ink-2)"}}>{m.message}</p>
+           </div>
+         ))}
+       </>}
+
+      <BulkBar count={sel.count} onClear={sel.clear}>
+        <button type="button" className="danger" onClick={bulkDelete}>Delete</button>
+      </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(MessagesAdmin);
+</script>
+</body>
+</html>

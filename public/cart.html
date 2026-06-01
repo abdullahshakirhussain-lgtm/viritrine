@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Your Bag — VITRINE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/nav.css" />
+<link rel="stylesheet" href="src/pages.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/Bottle.jsx"></script>
+<script type="text/babel" src="src/data.jsx"></script>
+<script type="text/babel" src="src/chrome.jsx"></script>
+<script type="text/babel" src="src/nav.jsx"></script>
+<script type="text/babel" src="src/page-shell.jsx"></script>
+
+<script type="text/babel">
+function CartPage() {
+  const [cart, setCart] = React.useState({ items: [], subtotal: 0, count: 0 });
+  const [loading, setLoading] = React.useState(true);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    window.api.get("/api/cart").then(c => { setCart(c); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+  React.useEffect(load, [load]);
+
+  const setQty = async (lineId, qty) => {
+    setCart(await window.api.patch("/api/cart/items/" + lineId, { qty }));
+    window.dispatchEvent(new CustomEvent("cart:changed"));
+  };
+  const remove = async (lineId) => {
+    setCart(await window.api.del("/api/cart/items/" + lineId));
+    window.dispatchEvent(new CustomEvent("cart:changed"));
+  };
+
+  const items = cart.items || [];
+  const sub = cart.subtotal || 0;
+  const shipping = sub >= 25000 ? 0 : 850;
+  const total = sub + shipping;
+
+  return (
+    <PageShell>
+      <div className="page-wrap">
+        <div className="page-head">
+          <div className="eyebrow"><span>Step 1 of 3</span></div>
+          <h1>Your <em>Bag</em></h1>
+          <p>{loading ? "Loading…" : `${cart.count} item${cart.count === 1 ? "" : "s"} · subtotal ${window.fmtLKR(sub)}`}</p>
+        </div>
+
+        {loading ? (
+          <div className="cart-grid">
+            <div>
+              <div className="cart-list">
+                {[0,1,2].map(i => (
+                  <div className="cart-line" key={i}>
+                    <div className="art sk" style={{borderRadius:0}}></div>
+                    <div>
+                      <div className="sk-line short"></div>
+                      <div className="sk-line long" style={{height:18}}></div>
+                      <div className="sk-line short"></div>
+                    </div>
+                    <div className="sk-line short" style={{width:60}}></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <aside className="cart-summary"><h3>Summary</h3><div className="sk-line long" style={{margin:"10px 0"}}></div><div className="sk-line long" style={{margin:"10px 0"}}></div></aside>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="empty-state">
+            <div className="glyph">
+              <svg viewBox="0 0 24 24"><path d="M6 8h12l-1.5 12h-9zM9 8V5a3 3 0 0 1 6 0v3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <span className="eyebrow">Step 1 of 3</span>
+            <h2>Your bag is <em>empty</em>.</h2>
+            <p>Start with our bestsellers — Tea <em style={{fontStyle:"italic",color:"var(--wine)"}}>Glow</em>, Gold <em style={{fontStyle:"italic",color:"var(--wine)"}}>Oil</em>, Red <em style={{fontStyle:"italic",color:"var(--wine)"}}>No. 12</em> — or browse by brand.</p>
+            <div className="actions">
+              <a className="btn-solid" href="Shop.html">Shop the shelf ⟶</a>
+              <a className="btn-ghost"  href="/#brands">Browse brands</a>
+            </div>
+            <div className="ornament"><span className="line"></span><span>Free samples · 3 with every order</span><span className="line"></span></div>
+          </div>
+        ) : (
+          <div className="cart-grid">
+            <div>
+              <div className="cart-list">
+                {items.map(line => {
+                  const it = line.product;
+                  const b = (BRANDS && BRANDS[it.brand]) || { name: it.brandName };
+                  return (
+                    <div key={line.lineId} className="cart-line">
+                      <a className="art" href={"/product/" + it.id}>
+                        <ProductVisual image={it.image} variant={it.variant} brand={b} product={{name: it.italic}} liquid={it.liquid} liquidTop={it.liquidTop}/>
+                      </a>
+                      <div>
+                        <div className="brand">{b.name}</div>
+                        <a className="name" href={"/product/" + it.id} style={{color:"inherit"}}>{it.name} <em>{it.italic}</em></a>
+                        <div className="meta">{line.size || it.size} · {window.fmtLKR(line.unitPrice)} each</div>
+                        <div className="qty">
+                          <button onClick={() => setQty(line.lineId, Math.max(1, line.qty - 1))}>−</button>
+                          <span>{line.qty}</span>
+                          <button onClick={() => setQty(line.lineId, line.qty + 1)}>+</button>
+                        </div>
+                        <button className="remove" onClick={() => remove(line.lineId)}>Remove</button>
+                      </div>
+                      <div className="price">
+                        <div className="now">{window.fmtLKR(line.lineTotal)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{marginTop:24,display:"flex",gap:12}}>
+                <a className="btn-ghost" href="Shop.html">⟵ Keep shopping</a>
+              </div>
+            </div>
+
+            <aside className="cart-summary">
+              <h3>Summary</h3>
+              <div className="row"><span>Subtotal</span><b>{window.fmtLKR(sub)}</b></div>
+              <div className="row"><span>Delivery</span><b>{shipping === 0 ? "Free" : window.fmtLKR(shipping)}</b></div>
+              <div className="row grand"><span>Total</span><b>{window.fmtLKR(total)}</b></div>
+              <a href="checkout.html" className="btn-solid">Checkout <span>⟶</span></a>
+              <div className="cart-note">Free delivery on orders over LKR 25,000 · Hand-wrapped gifting available at checkout.</div>
+            </aside>
+          </div>
+        )}
+      </div>
+    </PageShell>
+  );
+}
+
+mountPage(CartPage);
+</script>
+</body>
+</html>

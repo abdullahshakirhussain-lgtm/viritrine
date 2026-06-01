@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FAQs — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function FaqsAdmin() {
+  const [rows, setRows] = React.useState(null);
+  const [nq, setNq] = React.useState({ question: "", answer: "" });
+  const load = () => window.api.get("/api/admin/faqs").then(setRows);
+  React.useEffect(load, []);
+
+  const add = async (e) => {
+    e.preventDefault();
+    if (!nq.question.trim() || !nq.answer.trim()) return;
+    await window.api.post("/api/admin/faqs", nq);
+    setNq({ question: "", answer: "" }); load();
+  };
+  const update = (r, p) => window.api.patch("/api/admin/faqs/" + r.id, p).then(load);
+  const del = async (r) => { if (!adminConfirm("Delete this FAQ?")) return; await window.api.del("/api/admin/faqs/" + r.id); load(); };
+  const move = async (r, dir) => {
+    const list = [...rows]; const i = list.findIndex(x => x.id === r.id); const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    await Promise.all([
+      window.api.patch("/api/admin/faqs/" + list[i].id, { sort: list[j].sort }),
+      window.api.patch("/api/admin/faqs/" + list[j].id, { sort: list[i].sort }),
+    ]); load();
+  };
+
+  const sel = useBulkSelection(rows || [], "id");
+  const bulkDelete = async () => {
+    if (!adminConfirm(`Delete ${sel.count} FAQ${sel.count === 1 ? "" : "s"}?`)) return;
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.del("/api/admin/faqs/" + id));
+    sel.clear(); load();
+  };
+  const bulkActive = async (active) => {
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.patch("/api/admin/faqs/" + id, { active }));
+    sel.clear(); load();
+  };
+
+  return (
+    <AdminShell active="faqs" eyebrow="Contact page" title={<>FA<em>Qs</em></>}>
+      <section className="form-section">
+        <h3>Add a <em>question</em></h3>
+        <form onSubmit={add}>
+          <div className="field" style={{marginBottom:14}}><label>Question</label><input className="input" required value={nq.question} onChange={e => setNq({...nq, question: e.target.value})} placeholder="e.g. Can I return a product?" /></div>
+          <div className="field" style={{marginBottom:14}}><label>Answer</label><textarea required value={nq.answer} onChange={e => setNq({...nq, answer: e.target.value})} style={{minHeight:80}}></textarea></div>
+          <button className="btn-solid">＋ Add FAQ</button>
+        </form>
+      </section>
+
+      {rows === null ? <p>Loading…</p> :
+       rows.length === 0 ? <div className="empty-admin"><h3>No FAQs</h3></div> :
+       <>
+        <div style={{display:"flex",alignItems:"center",gap:10,margin:"4px 0 14px",padding:"4px",fontSize:12,color:"var(--ink-3)"}}>
+          <input type="checkbox" checked={sel.allSelected} onChange={sel.toggleAll} style={{accentColor:"var(--wine)",width:16,height:16,cursor:"pointer"}} />
+          <span>Select all</span>
+        </div>
+        {rows.map((r, i) => (
+          <div className="form-section" key={r.id}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:10}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <input type="checkbox" checked={sel.selected.has(r.id)} onChange={() => sel.toggle(r.id)} style={{accentColor:"var(--wine)",width:16,height:16,cursor:"pointer"}} />
+                <button type="button" disabled={i===0} onClick={() => move(r, -1)} style={{padding:"4px 8px",border:"1px solid var(--line-2)"}}>↑</button>
+                <button type="button" disabled={i===rows.length-1} onClick={() => move(r, +1)} style={{padding:"4px 8px",border:"1px solid var(--line-2)"}}>↓</button>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button type="button" className={"chip-toggle" + (r.active ? " on" : "")} onClick={() => update(r, { active: !r.active })}>{r.active ? "Active" : "Hidden"}</button>
+                <button type="button" className="chip-toggle" onClick={() => del(r)} style={{color:"var(--wine)",borderColor:"var(--wine)"}}>Delete</button>
+              </div>
+            </div>
+            <div className="field" style={{marginBottom:10}}><label>Question</label><input className="input" defaultValue={r.question} onBlur={e => e.target.value !== r.question && update(r, { question: e.target.value })} /></div>
+            <div className="field"><label>Answer</label><textarea defaultValue={r.answer} onBlur={e => e.target.value !== r.answer && update(r, { answer: e.target.value })} style={{minHeight:60}}></textarea></div>
+          </div>
+        ))}
+       </>}
+
+      <BulkBar count={sel.count} onClear={sel.clear}>
+        <button type="button" onClick={() => bulkActive(true)}>Activate</button>
+        <button type="button" onClick={() => bulkActive(false)}>Hide</button>
+        <button type="button" className="danger" onClick={bulkDelete}>Delete</button>
+      </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(FaqsAdmin);
+</script>
+</body>
+</html>

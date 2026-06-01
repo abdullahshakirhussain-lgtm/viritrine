@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Brands — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function BrandsAdmin() {
+  const [rows, setRows] = React.useState(null);
+  const load = () => window.api.get("/api/admin/brands").then(setRows);
+  React.useEffect(load, []);
+
+  const onDelete = async (b) => {
+    if (!adminConfirm(`Delete brand "${b.name}"?`)) return;
+    try { await window.api.del("/api/admin/brands/" + encodeURIComponent(b.key)); load(); }
+    catch (e) { alert(e.message); }
+  };
+
+  const sel = useBulkSelection(rows || [], "key");
+  const bulkDelete = async () => {
+    const ids = Array.from(sel.selected);
+    if (!adminConfirm(`Delete ${ids.length} brand${ids.length === 1 ? "" : "s"}? Brands with products attached will be skipped.`)) return;
+    const { ok, failed } = await adminBulkRun(ids, (k) => window.api.del("/api/admin/brands/" + encodeURIComponent(k)));
+    sel.clear(); load();
+    if (failed.length) alert(`${ok.length} deleted · ${failed.length} skipped (had products)`);
+  };
+
+  return (
+    <AdminShell active="brands" eyebrow={`${rows ? rows.length : "…"} brands carried`} title={<>Bra<em>nds</em></>}
+      actions={<a href="admin-brand-edit.html" className="btn-solid">＋ Add brand</a>}>
+      {rows === null ? <p>Loading…</p> :
+       rows.length === 0 ? (
+         <div className="empty-admin"><h3>No brands yet</h3><p>Add your first brand to start listing products.</p></div>
+       ) : (
+         <div className="dt-wrap">
+           <table className="dt">
+             <thead><tr>
+               <th className="bulk-cell"><BulkCheckHeader allSelected={sel.allSelected} some={sel.some} onToggleAll={sel.toggleAll} /></th>
+               <th></th><th>Brand</th><th>Location</th><th>Category</th><th>Accent</th><th></th>
+             </tr></thead>
+             <tbody>
+               {rows.map(b => (
+                 <tr key={b.key}>
+                   <td className="bulk-cell"><input type="checkbox" checked={sel.selected.has(b.key)} onChange={() => sel.toggle(b.key)} /></td>
+                   <td><div className={"thumb" + (b.image ? "" : " empty")}>{b.image ? <img src={b.image} alt="" /> : (b.name || "?")[0]}</div></td>
+                   <td><b>{b.name}</b><br/><span style={{fontSize:11,color:"var(--ink-3)"}}>{b.key}</span></td>
+                   <td>{b.loc}</td>
+                   <td>{b.cat}</td>
+                   <td>{b.accent && <span style={{display:"inline-block",width:12,height:12,background:b.accent,marginRight:6,verticalAlign:"middle"}}></span>}{b.accent}</td>
+                   <td className="row-actions">
+                     <a href={"admin-brand-edit.html?key=" + encodeURIComponent(b.key)}>Edit</a>
+                     <button className="danger" onClick={() => onDelete(b)}>Delete</button>
+                   </td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+         </div>
+       )}
+       <BulkBar count={sel.count} onClear={sel.clear}>
+         <button type="button" className="danger" onClick={bulkDelete}>Delete</button>
+       </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(BrandsAdmin);
+</script>
+</body>
+</html>

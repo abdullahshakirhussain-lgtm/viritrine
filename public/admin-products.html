@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Products — VITRINE Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function ProductsAdmin() {
+  const [products, setProducts] = React.useState(null);
+  const [brands, setBrands]     = React.useState({});
+  const [q, setQ]               = React.useState("");
+  const [filterCat, setFilterCat] = React.useState("");
+  const [filterBrand, setFilterBrand] = React.useState("");
+
+  const load = () => {
+    window.api.get("/api/admin/products").then(setProducts);
+    window.api.get("/api/brands").then(bs => {
+      const map = {}; bs.forEach(b => map[b.key] = b); setBrands(map);
+    });
+  };
+  React.useEffect(load, []);
+
+  const onDelete = async (p) => {
+    if (!adminConfirm(`Delete ${p.name} ${p.italic || ""}? This cannot be undone.`)) return;
+    try {
+      await window.api.del("/api/admin/products/" + encodeURIComponent(p.id));
+      load();
+    } catch (e) {
+      // The backend returns canHide=true when the product has order history.
+      if (e.data?.canHide) {
+        if (adminConfirm(`${e.message}\n\nHide it now instead?`)) {
+          try {
+            await window.api.patch("/api/admin/products/" + encodeURIComponent(p.id), { is_active: false });
+            load();
+          } catch (ex) { alert(ex.message); }
+        }
+      } else {
+        alert(e.message);
+      }
+    }
+  };
+  const toggleActive = async (p) => {
+    try {
+      await window.api.patch("/api/admin/products/" + encodeURIComponent(p.id), { is_active: !p.isActive });
+      load();
+    } catch (e) { alert(e.message); }
+  };
+
+  const filtered = (products || []).filter(p => {
+    if (filterCat && p.category !== filterCat) return false;
+    if (filterBrand && p.brand !== filterBrand) return false;
+    if (!q) return true;
+    const hay = (p.id + " " + p.name + " " + (p.italic || "") + " " + (brands[p.brand]?.name || "")).toLowerCase();
+    return hay.includes(q.toLowerCase());
+  });
+
+  const categories = Array.from(new Set((products || []).map(p => p.category)));
+
+  const sel = useBulkSelection(filtered, "id");
+
+  const bulkSetActive = async (active) => {
+    const ids = Array.from(sel.selected);
+    await adminBulkRun(ids, (id) => window.api.patch("/api/admin/products/" + encodeURIComponent(id), { is_active: active }));
+    sel.clear(); load();
+  };
+  const bulkDelete = async () => {
+    const ids = Array.from(sel.selected);
+    if (!adminConfirm(`Delete ${ids.length} product${ids.length === 1 ? "" : "s"}? Anything with order history will be hidden instead.`)) return;
+    let hidden = 0;
+    const { ok, failed } = await adminBulkRun(ids, async (id) => {
+      try { await window.api.del("/api/admin/products/" + encodeURIComponent(id)); }
+      catch (e) {
+        if (e.data?.canHide) {
+          await window.api.patch("/api/admin/products/" + encodeURIComponent(id), { is_active: false });
+          hidden++; return;
+        }
+        throw e;
+      }
+    });
+    sel.clear(); load();
+    const msg = [
+      ok.length      && `${ok.length - hidden} deleted`,
+      hidden         && `${hidden} hidden (had orders)`,
+      failed.length  && `${failed.length} failed`,
+    ].filter(Boolean).join(" · ");
+    if (msg) alert(msg);
+  };
+
+  return (
+    <AdminShell active="products" eyebrow={`${products ? products.length : "…"} pieces in store`} title={<>Pro<em>ducts</em></>}
+      actions={<a href="admin-product-edit.html" className="btn-solid">＋ Add product</a>}>
+
+      <div className="admin-toolbar">
+        <input className="search" placeholder="Search by name, brand, ID…" value={q} onChange={e => setQ(e.target.value)} />
+        <select className="search" style={{flex:"0 0 180px"}} value={filterCat} onChange={e => setFilterCat(e.target.value)}>
+          <option value="">All categories</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select className="search" style={{flex:"0 0 200px"}} value={filterBrand} onChange={e => setFilterBrand(e.target.value)}>
+          <option value="">All brands</option>
+          {Object.values(brands).map(b => <option key={b.key} value={b.key}>{b.name}</option>)}
+        </select>
+      </div>
+
+      {products === null ? <p>Loading…</p> :
+       filtered.length === 0 ? (
+         <div className="empty-admin">
+           <h3>No products{q || filterCat || filterBrand ? " match" : " yet"}</h3>
+           <p>{q || filterCat || filterBrand ? "Try clearing the filters." : "Add your first piece to get started."}</p>
+           <p style={{marginTop:16}}><a className="btn-solid" href="admin-product-edit.html">＋ Add product</a></p>
+         </div>
+       ) : (
+         <div className="dt-wrap">
+           <table className="dt">
+             <thead><tr>
+               <th className="bulk-cell"><BulkCheckHeader allSelected={sel.allSelected} some={sel.some} onToggleAll={sel.toggleAll} /></th>
+               <th></th><th>Name</th><th>Brand</th><th>Category</th><th className="num">Price</th><th>Stock</th><th>State</th><th></th>
+             </tr></thead>
+             <tbody>
+               {filtered.map(p => (
+                 <tr key={p.id}>
+                   <td className="bulk-cell"><input type="checkbox" checked={sel.selected.has(p.id)} onChange={() => sel.toggle(p.id)} /></td>
+                   <td><div className={"thumb" + (p.image ? "" : " empty")}>{p.image ? <img src={p.image} alt="" /> : (brands[p.brand]?.name || "?")[0]}</div></td>
+                   <td><b>{p.name}</b> <em style={{color:"var(--wine)",fontFamily:"var(--font-serif)"}}>{p.italic}</em><br/><span style={{fontSize:11,color:"var(--ink-3)"}}>{p.id}</span></td>
+                   <td>{brands[p.brand]?.name || p.brand}</td>
+                   <td>{p.category}{p.sub ? " · " + p.sub : ""}</td>
+                   <td className="num">
+                     {p.sale ? <><b>{adminFmtMoney(p.sale)}</b><br/><span style={{textDecoration:"line-through",color:"var(--ink-3)",fontSize:11}}>{adminFmtMoney(p.price)}</span></> : adminFmtMoney(p.price)}
+                   </td>
+                   <td>{p.stock ?? 0}</td>
+                   <td>
+                     {p.isActive
+                       ? (p.isNew ? <span className="pill paid">New</span> : p.isBestseller ? <span className="pill shipped">Best</span> : <span className="pill paid">Live</span>)
+                       : <span className="pill inactive">Hidden</span>}
+                   </td>
+                   <td className="row-actions">
+                     <a href={"admin-product-edit.html?id=" + encodeURIComponent(p.id)}>Edit</a>
+                     <button onClick={() => toggleActive(p)}>{p.isActive ? "Hide" : "Show"}</button>
+                     <button className="danger" onClick={() => onDelete(p)}>Delete</button>
+                   </td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+         </div>
+       )}
+
+       <BulkBar count={sel.count} onClear={sel.clear}>
+         <button type="button" onClick={() => bulkSetActive(true)}>Show</button>
+         <button type="button" onClick={() => bulkSetActive(false)}>Hide</button>
+         <button type="button" className="danger" onClick={bulkDelete}>Delete</button>
+       </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(ProductsAdmin);
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "VITRINE — Beauty, Curated",
+  "short_name": "VITRINE",
+  "description": "A Colombo multi-brand beauty boutique.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#EFE6D2",
+  "theme_color": "#5A1430",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

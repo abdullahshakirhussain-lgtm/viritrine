@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Journal — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function JournalAdmin() {
+  const [rows, setRows] = React.useState(null);
+  const load = () => window.api.get("/api/admin/journal").then(setRows);
+  React.useEffect(load, []);
+
+  const del = async (r) => { if (!adminConfirm(`Delete "${r.title}"?`)) return; await window.api.del("/api/admin/journal/" + r.id); load(); };
+  const togglePublish = async (r) => { await window.api.patch("/api/admin/journal/" + r.id, { published: !r.published_at }); load(); };
+
+  const sel = useBulkSelection(rows || [], "id");
+  const bulkDelete = async () => {
+    if (!adminConfirm(`Delete ${sel.count} post${sel.count === 1 ? "" : "s"}?`)) return;
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.del("/api/admin/journal/" + id));
+    sel.clear(); load();
+  };
+  const bulkPublish = async (published) => {
+    await adminBulkRun(Array.from(sel.selected), (id) => window.api.patch("/api/admin/journal/" + id, { published }));
+    sel.clear(); load();
+  };
+
+  return (
+    <AdminShell active="journal" eyebrow={`${rows ? rows.length : "…"} posts`} title={<>Jour<em>nal</em></>}
+      actions={<a href="admin-journal-edit.html" className="btn-solid">＋ New post</a>}>
+      {rows === null ? <p>Loading…</p> :
+       rows.length === 0 ? <div className="empty-admin"><h3>No posts yet</h3><p>Stories help with SEO and bring visitors to the shop.</p><p style={{marginTop:14}}><a className="btn-solid" href="admin-journal-edit.html">Write the first post ⟶</a></p></div> :
+        <div className="dt-wrap">
+          <table className="dt">
+            <thead><tr>
+              <th className="bulk-cell"><BulkCheckHeader allSelected={sel.allSelected} some={sel.some} onToggleAll={sel.toggleAll} /></th>
+              <th></th><th>Title</th><th>Slug</th><th>Tag</th><th>Status</th><th>Date</th><th></th>
+            </tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td className="bulk-cell"><input type="checkbox" checked={sel.selected.has(r.id)} onChange={() => sel.toggle(r.id)} /></td>
+                  <td><div className={"thumb" + (r.cover_image ? "" : " empty")}>{r.cover_image ? <img src={r.cover_image} alt="" /> : (r.glyph || (r.title || "?")[0])}</div></td>
+                  <td><b>{r.title}</b> <em style={{fontFamily:"var(--font-serif)",color:"var(--wine)"}}>{r.italic}</em><br/><span style={{fontSize:11,color:"var(--ink-3)"}}>{r.excerpt?.slice(0, 80)}{r.excerpt?.length > 80 ? "…" : ""}</span></td>
+                  <td><code>{r.slug}</code></td>
+                  <td>{r.tag}</td>
+                  <td>{r.published_at ? <span className="pill paid">Published</span> : <span className="pill inactive">Draft</span>}</td>
+                  <td>{r.published_at ? adminFmtDate(r.published_at) : "—"}</td>
+                  <td className="row-actions">
+                    <a href={"admin-journal-edit.html?id=" + r.id}>Edit</a>
+                    <button onClick={() => togglePublish(r)}>{r.published_at ? "Unpublish" : "Publish"}</button>
+                    {r.published_at && <a href={"/journal/" + encodeURIComponent(r.slug)} target="_blank">View ↗</a>}
+                    <button className="danger" onClick={() => del(r)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>}
+      <BulkBar count={sel.count} onClear={sel.clear}>
+        <button type="button" onClick={() => bulkPublish(true)}>Publish</button>
+        <button type="button" onClick={() => bulkPublish(false)}>Unpublish</button>
+        <button type="button" className="danger" onClick={bulkDelete}>Delete</button>
+      </BulkBar>
+    </AdminShell>
+  );
+}
+
+mountAdmin(JournalAdmin);
+</script>
+</body>
+</html>
