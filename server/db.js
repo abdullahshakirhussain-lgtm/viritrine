@@ -282,12 +282,39 @@ CREATE TABLE IF NOT EXISTS shop_locations (
   active     INTEGER DEFAULT 1
 );
 
+-- ── Owned analytics (first-party) ──────────────────────────────────────────
+-- One row per visitor session (sh_sid-equivalent cookie). Phone is stored ONLY
+-- as a hash (for repeat-buyer matching) + last 4 (for eyeball recognition) —
+-- never the full number, which lives in orders alone. Attached at checkout.
+CREATE TABLE IF NOT EXISTS analytics_sessions (
+  id          TEXT PRIMARY KEY,             -- the sh_sid cookie value
+  phone_hash  TEXT,                         -- SHA-256 of normalized phone (nullable)
+  phone_last4 TEXT,                         -- last 4 digits, for recognition
+  first_seen  INTEGER DEFAULT (strftime('%s','now')),
+  last_seen   INTEGER DEFAULT (strftime('%s','now'))
+);
+
+-- Append-only event log. Common columns per the brief; meta is free-form JSON.
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  type       TEXT NOT NULL,                 -- product_view | search | add_to_cart | begin_checkout | whatsapp_click | purchase
+  product_id TEXT,
+  value      INTEGER,                       -- e.g. order total, in LKR
+  meta       TEXT,                          -- JSON-encoded extras (query, model, etc.)
+  created_at INTEGER DEFAULT (strftime('%s','now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_products_brand    ON products(brand_key);
 CREATE INDEX IF NOT EXISTS idx_products_cat      ON products(category);
 CREATE INDEX IF NOT EXISTS idx_cart_items_cart   ON cart_items(cart_id);
 CREATE INDEX IF NOT EXISTS idx_orders_user       ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_email      ON orders(email);
 CREATE INDEX IF NOT EXISTS idx_journal_published ON journal_posts(published_at);
+CREATE INDEX IF NOT EXISTS idx_events_session    ON analytics_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_events_type       ON analytics_events(type);
+CREATE INDEX IF NOT EXISTS idx_events_created    ON analytics_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_events_product    ON analytics_events(product_id);
 `);
 
 // ── Safe column migrations for upgrading existing databases ────────────────

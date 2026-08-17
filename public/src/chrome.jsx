@@ -93,7 +93,7 @@ function Footer({ name = "VITRINE", tagline = "Beauty, Hand-Picked" }) {
         <div className="socials">
           {ig && <a href={ig} target="_blank">Instagram</a>}
           {pi && <a href={pi} target="_blank">Pinterest</a>}
-          {wa && <a href={wa} target="_blank">WhatsApp</a>}
+          {wa && <a href={wa} target="_blank" onClick={() => window.track && window.track("whatsapp_click", { meta: { where: "footer" } })}>WhatsApp</a>}
         </div>
       </div>
     </footer>

@@ -34,3 +34,22 @@ const api = {
 window.api = api;
 
 window.fmtLKR = (n) => "LKR " + Number(n || 0).toLocaleString("en-US");
+
+// Fire-and-forget analytics for client-only events (begin_checkout,
+// whatsapp_click). Server-backed events (product_view, search, add_to_cart,
+// purchase) are logged automatically by the API — don't double-fire them here.
+// Never throws and never blocks: uses sendBeacon when available so it survives
+// navigation (e.g. clicking a wa.me link that leaves the page).
+window.track = (type, data = {}) => {
+  try {
+    const payload = JSON.stringify({ type, ...data });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/api/analytics/event", new Blob([payload], { type: "application/json" }));
+    } else {
+      fetch("/api/analytics/event", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: payload, keepalive: true,
+      }).catch(() => {});
+    }
+  } catch (e) { /* analytics must never break the page */ }
+};

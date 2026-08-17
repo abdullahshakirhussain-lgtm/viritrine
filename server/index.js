@@ -56,6 +56,40 @@ const uploadLimit = makeLimiter(10 * 60 * 1000, 10, "Too many uploads — try ag
 const trackLimit  = makeLimiter(60 * 1000, 20, "Too many tracking lookups — try again in a minute.");
 app.use("/api", loose);
 
+// ── Owned analytics (first-party, fire-and-forget) ───────
+// Allowlisted event types — anything else is dropped.
+const ANALYTICS_TYPES = new Set([
+  "product_view", "search", "add_to_cart", "begin_checkout", "whatsapp_click", "purchase",
+]);
+
+// Persistent visitor id in a first-party cookie (sh_sid-equivalent). Server-
+// managed + httpOnly; created on first request via the middleware below.
+const sidOf = (req, res) => {
+  let sid = req.cookies?.vt_sid;
+  if (!sid) {
+    sid = crypto.randomBytes(16).toString("hex");
+    res.cookie("vt_sid", sid, {
+      httpOnly: true, sameSite: "lax", secure: IS_PROD,
+      maxAge: 365 * 24 * 3600 * 1000, path: "/",
+    });
+  }
+  return sid;
+};
+
+// Record one event. NEVER throws — analytics must not break a user request.
+const logEvent = (sid, type, { productId = null, value = null, meta = null } = {}) => {
+  try {
+    if (!sid || !ANALYTICS_TYPES.has(type)) return;
+    db.prepare("INSERT OR IGNORE INTO analytics_sessions (id) VALUES (?)").run(sid);
+    db.prepare("UPDATE analytics_sessions SET last_seen=strftime('%s','now') WHERE id=?").run(sid);
+    db.prepare("INSERT INTO analytics_events (session_id,type,product_id,value,meta) VALUES (?,?,?,?,?)")
+      .run(sid, type, productId, value, meta ? JSON.stringify(meta) : null);
+  } catch (_) { /* swallow — fire-and-forget */ }
+};
+
+// Ensure every visitor carries a session cookie as early as possible.
+app.use((req, res, next) => { sidOf(req, res); next(); });
+
 // ── File uploads ────────────────────────────────────────
 const UPLOAD_DIR = path.join(__dirname, "data", "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -400,6 +434,7 @@ app.get("/api/products", (req, res) => {
 app.get("/api/products/:id", (req, res) => {
   const p = productById(req.params.id);
   if (!p) return res.status(404).json({ error: "Not found" });
+  logEvent(sidOf(req, res), "product_view", { productId: p.id }); // fire-and-forget
   const related = db.prepare(
     "SELECT * FROM products WHERE category=? AND id<>? ORDER BY is_bestseller DESC LIMIT 6"
   ).all(p.category, p.id).map(hydrateProduct);
@@ -415,6 +450,8 @@ app.get("/api/search", (req, res) => {
     WHERE name LIKE ? OR italic LIKE ? OR brand_key LIKE ? OR copy LIKE ?
     LIMIT 8
   `).all(like, like, like, like);
+  // Log only meaningful queries (2+ chars) to keep type-ahead noise down.
+  if (q.length >= 2) logEvent(sidOf(req, res), "search", { meta: { q, results: rows.length } });
   res.json(rows.map(hydrateProduct));
 });
 
@@ -637,6 +674,9 @@ app.post("/api/cart/items", (req, res) => {
       .run(cart.id, product.id, parsed.data.qty, size);
   }
   db.prepare("UPDATE carts SET updated_at = strftime('%s','now') WHERE id=?").run(cart.id);
+  logEvent(sidOf(req, res), "add_to_cart", {
+    productId: product.id, value: (product.sale ?? product.price), meta: { qty: parsed.data.qty },
+  });
   res.json(cartPayload(cart.id));
 });
 
@@ -748,6 +788,20 @@ app.post("/api/orders", (req, res) => {
     return orderId;
   });
   const orderId = tx();
+
+  // ── Analytics: attach phone (hash + last4 only) to the session and log the
+  // purchase. The full number lives in orders only — never in the analytics table.
+  const sid = sidOf(req, res);
+  try {
+    const phoneNorm = normalizePhoneLK(data.phone) || String(data.phone || "").replace(/\D/g, "");
+    if (phoneNorm) {
+      db.prepare("INSERT OR IGNORE INTO analytics_sessions (id) VALUES (?)").run(sid);
+      db.prepare("UPDATE analytics_sessions SET phone_hash=?, phone_last4=? WHERE id=?")
+        .run(sha256(phoneNorm), phoneNorm.slice(-4), sid);
+    }
+  } catch (_) { /* never block the order */ }
+  logEvent(sid, "purchase", { value: total, meta: { number, items: lines.length } });
+
   const order = db.prepare("SELECT * FROM orders WHERE id=?").get(orderId);
   const items = db.prepare("SELECT * FROM order_items WHERE order_id=?").all(orderId);
   res.json({ order, items });
@@ -807,6 +861,23 @@ app.get("/api/track", trackLimit, (req, res) => {
   });
 });
 
+// Client-fired analytics events (things with no natural server call). Restricted
+// to a client-safe subset so it can't be used to forge the server-logged events.
+// Always 204, fire-and-forget — must never affect the user flow.
+const CLIENT_EVENT_TYPES = new Set(["begin_checkout", "whatsapp_click"]);
+app.post("/api/analytics/event", (req, res) => {
+  const sid = sidOf(req, res);
+  const type = String(req.body?.type || "");
+  if (CLIENT_EVENT_TYPES.has(type)) {
+    logEvent(sid, type, {
+      productId: req.body?.productId ? String(req.body.productId).slice(0, 40) : null,
+      value: Number.isFinite(req.body?.value) ? Math.trunc(req.body.value) : null,
+      meta: (req.body?.meta && typeof req.body.meta === "object") ? req.body.meta : null,
+    });
+  }
+  res.status(204).end();
+});
+
 /* ── newsletter + contact ────────────────────────────── */
 app.post("/api/newsletter", (req, res) => {
   const email = (req.body?.email || "").toString().trim().toLowerCase();
@@ -846,6 +917,89 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, (_req, res) => {
     revenue:   db.prepare("SELECT COALESCE(SUM(total),0) s FROM orders WHERE status NOT IN ('cancelled','refunded')").get().s,
     recentOrders: db.prepare("SELECT id,number,email,status,total,created_at FROM orders ORDER BY created_at DESC LIMIT 5").all(),
   });
+});
+
+// ── admin: owned analytics dashboard data ───────────────────────────────────
+app.get("/api/admin/analytics", requireAuth, requireAdmin, (req, res) => {
+  const days = [7, 30, 90].includes(parseInt(req.query.range, 10)) ? parseInt(req.query.range, 10) : 30;
+  const since = Math.floor(Date.now() / 1000) - days * 86400;
+
+  // Funnel — distinct sessions reaching each stage, with drop-off vs the previous.
+  const stageRows = db.prepare(`
+    SELECT type, COUNT(DISTINCT session_id) c
+    FROM analytics_events
+    WHERE created_at >= ? AND type IN ('product_view','add_to_cart','begin_checkout','purchase')
+    GROUP BY type
+  `).all(since);
+  const stageCount = Object.fromEntries(stageRows.map(r => [r.type, r.c]));
+  const order = [
+    ["product_view", "Viewed a product"],
+    ["add_to_cart", "Added to cart"],
+    ["begin_checkout", "Began checkout"],
+    ["purchase", "Purchased"],
+  ];
+  let prev = null;
+  const funnel = order.map(([type, label]) => {
+    const count = stageCount[type] || 0;
+    const dropoff = prev != null && prev > 0 ? Math.round((1 - count / prev) * 100) : null;
+    prev = count;
+    return { type, label, count, dropoff };
+  });
+
+  // Top products — views, cart-adds, and view→cart conversion %.
+  const top = db.prepare(`
+    SELECT product_id,
+           SUM(CASE WHEN type='product_view' THEN 1 ELSE 0 END) views,
+           SUM(CASE WHEN type='add_to_cart'  THEN 1 ELSE 0 END) carts
+    FROM analytics_events
+    WHERE created_at >= ? AND product_id IS NOT NULL AND type IN ('product_view','add_to_cart')
+    GROUP BY product_id
+    HAVING views > 0
+    ORDER BY views DESC
+    LIMIT 12
+  `).all(since).map(r => {
+    const p = db.prepare("SELECT name, italic, brand_key FROM products WHERE id=?").get(r.product_id);
+    return {
+      productId: r.product_id,
+      name: p ? `${p.name}${p.italic ? " " + p.italic : ""}` : r.product_id,
+      brand: p?.brand_key || "",
+      views: r.views, carts: r.carts,
+      conversion: r.views ? Math.round((r.carts / r.views) * 100) : 0,
+    };
+  });
+
+  // Frequently viewed together — distinct-session co-occurrence of product views.
+  const pairs = db.prepare(`
+    SELECT a.product_id p1, b.product_id p2, COUNT(DISTINCT a.session_id) c
+    FROM analytics_events a
+    JOIN analytics_events b
+      ON a.session_id = b.session_id AND a.product_id < b.product_id
+    WHERE a.type='product_view' AND b.type='product_view'
+      AND a.created_at >= ? AND b.created_at >= ?
+    GROUP BY p1, p2
+    ORDER BY c DESC
+    LIMIT 10
+  `).all(since, since).map(r => {
+    const n = (id) => { const p = db.prepare("SELECT name FROM products WHERE id=?").get(id); return p?.name || id; };
+    return { a: n(r.p1), b: n(r.p2), count: r.c };
+  });
+
+  // Known-customer KPIs — sessions we can tie to a phone (hash), and repeat phones.
+  const knownCustomers = db.prepare("SELECT COUNT(*) c FROM analytics_sessions WHERE phone_hash IS NOT NULL").get().c;
+  const repeatCustomers = db.prepare(`
+    SELECT COUNT(*) c FROM (
+      SELECT phone_hash FROM analytics_sessions WHERE phone_hash IS NOT NULL
+      GROUP BY phone_hash HAVING COUNT(*) > 1
+    )
+  `).get().c;
+
+  const totals = {
+    sessions: db.prepare("SELECT COUNT(DISTINCT session_id) c FROM analytics_events WHERE created_at >= ?").get(since).c,
+    events:   db.prepare("SELECT COUNT(*) c FROM analytics_events WHERE created_at >= ?").get(since).c,
+    whatsapp: db.prepare("SELECT COUNT(*) c FROM analytics_events WHERE created_at >= ? AND type='whatsapp_click'").get(since).c,
+  };
+
+  res.json({ range: days, funnel, top, pairs, knownCustomers, repeatCustomers, totals });
 });
 
 // Products: list (admin sees inactive too)
