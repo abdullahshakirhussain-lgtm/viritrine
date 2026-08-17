@@ -328,6 +328,8 @@ ensureColumn("products", "image",            "image TEXT");
 ensureColumn("products", "is_active",        "is_active INTEGER DEFAULT 1");
 ensureColumn("products", "editor_pick_sort", "editor_pick_sort INTEGER");
 ensureColumn("products", "editor_tag",       "editor_tag TEXT");
+ensureColumn("products", "meta_title",        "meta_title TEXT");   // AI-drafted SEO <title>
+ensureColumn("products", "meta_desc",         "meta_desc TEXT");    // AI-drafted SEO description
 ensureColumn("brands",   "image",            "image TEXT");
 
 // ── Phone-OTP sign-up: make users.email optional ───────────────────────────

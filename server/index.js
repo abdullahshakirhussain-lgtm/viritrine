@@ -14,6 +14,7 @@ try { require("dotenv").config(); } catch (_) {}
 
 const db = require("./db");
 const { sendSms, smsConfigured } = require("./sms");
+const { describeProductFromImage, aiConfigured, AI_PROVIDER } = require("./ai");
 
 const PORT = parseInt(process.env.PORT || "4000", 10);
 const IS_PROD = process.env.NODE_ENV === "production";
@@ -206,6 +207,8 @@ const hydrateProduct = (row) => {
     isActive: row.is_active == null ? true : !!row.is_active,
     editorPickSort: row.editor_pick_sort,
     editorTag: row.editor_tag,
+    metaTitle: row.meta_title || null,
+    metaDesc: row.meta_desc || null,
     stock: row.stock,
     image: row.image || null,
     concerns,
@@ -1002,6 +1005,88 @@ app.get("/api/admin/analytics", requireAuth, requireAdmin, (req, res) => {
   res.json({ range: days, funnel, top, pairs, knownCustomers, repeatCustomers, totals });
 });
 
+// ── admin: AI product authoring (photo → draft fields) ──────────────────────
+// In-memory uploader (we never persist the analyzed file here — the admin uploads
+// the real product image through the normal flow after reviewing the draft).
+const aiImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 6 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /^image\/(png|jpe?g|webp|avif|gif)$/.test(file.mimetype);
+    cb(ok ? null : new Error("Only PNG / JPG / WEBP / AVIF / GIF allowed"), ok);
+  },
+}).single("image");
+
+// Read an image the admin already uploaded to OUR storage (anti-phishing: only
+// /uploads/* paths under UPLOAD_DIR are allowed — never an arbitrary URL).
+function readOwnUpload(rel) {
+  if (typeof rel !== "string" || !rel.startsWith("/uploads/")) return null;
+  const abs = path.normalize(path.join(UPLOAD_DIR, rel.replace(/^\/uploads\//, "")));
+  if (!abs.startsWith(UPLOAD_DIR)) return null; // path traversal guard
+  if (!fs.existsSync(abs)) return null;
+  const ext = path.extname(abs).toLowerCase();
+  const mime = MIME_EXT_REVERSE[ext];
+  if (!mime) return null;
+  return { base64: fs.readFileSync(abs).toString("base64"), mimeType: mime };
+}
+const MIME_EXT_REVERSE = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".webp": "image/webp", ".avif": "image/avif", ".gif": "image/gif",
+};
+
+// Clamp the model's category/concerns to the shop's real taxonomy so a stray
+// value never lands in the form.
+function clampToTaxonomy(draft, taxonomy) {
+  const catKeys = new Set((taxonomy.categories || []).map(c => c.key));
+  const conKeys = new Set((taxonomy.concerns || []).map(c => c.key));
+  const brandKeys = new Set((taxonomy.brands || []).map(b => b.key));
+  return {
+    name: String(draft.name || "").slice(0, 120),
+    italic: String(draft.italic || "").slice(0, 120),
+    size: String(draft.size || "").slice(0, 40),
+    sub: String(draft.sub || "").slice(0, 60),
+    category: catKeys.has(draft.category) ? draft.category : "",
+    concerns: Array.isArray(draft.concerns) ? draft.concerns.filter(c => conKeys.has(c)) : [],
+    copy: String(draft.copy || "").slice(0, 2000),
+    notes: Array.isArray(draft.notes) ? draft.notes.map(n => String(n).slice(0, 80)).slice(0, 12) : [],
+    meta_title: String(draft.meta_title || "").slice(0, 200),
+    meta_desc: String(draft.meta_desc || "").slice(0, 400),
+    brand_guess: brandKeys.has(draft.brand_guess) ? draft.brand_guess : "",
+  };
+}
+
+app.post("/api/admin/ai/describe-product", uploadLimit, requireAuth, requireAdmin, (req, res) => {
+  if (!aiConfigured) {
+    return res.status(503).json({ error: "AI is not configured — set the provider API key in .env." });
+  }
+  aiImageUpload(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    let image = null;
+    if (req.file) {
+      image = { base64: req.file.buffer.toString("base64"), mimeType: req.file.mimetype };
+    } else if (req.body && req.body.imageUrl) {
+      image = readOwnUpload(req.body.imageUrl);
+      if (!image) return res.status(400).json({ error: "imageUrl must point to an existing /uploads image." });
+    } else {
+      return res.status(400).json({ error: "Provide an image file or an imageUrl." });
+    }
+
+    const taxonomy = {
+      categories: db.prepare("SELECT key, label FROM categories ORDER BY sort").all(),
+      concerns:   db.prepare("SELECT key, label FROM concerns ORDER BY sort").all(),
+      brands:     db.prepare("SELECT key, name FROM brands ORDER BY sort").all(),
+    };
+
+    try {
+      const draft = await describeProductFromImage({ ...image, taxonomy });
+      res.json({ provider: AI_PROVIDER, draft: clampToTaxonomy(draft, taxonomy) });
+    } catch (e) {
+      console.error("AI describe failed:", e?.message || e);
+      res.status(502).json({ error: "Couldn't analyze the photo — please try again." });
+    }
+  });
+});
+
 // Products: list (admin sees inactive too)
 app.get("/api/admin/products", requireAuth, requireAdmin, (_req, res) => {
   const rows = db.prepare("SELECT * FROM products ORDER BY created_at DESC").all();
@@ -1029,6 +1114,8 @@ const productSchema = z.object({
   stock:        z.number().int().min(0).default(0),
   editor_pick_sort: z.number().int().nullable().optional(),
   editor_tag:       z.string().max(40).nullable().optional(),
+  meta_title:   z.string().max(200).nullable().optional(),
+  meta_desc:    z.string().max(400).nullable().optional(),
   concerns:     z.array(z.string()).optional(),
   notes:        z.array(z.string()).optional(),
 });
@@ -1050,14 +1137,14 @@ app.post("/api/admin/products", requireAuth, requireAdmin, (req, res) => {
   db.transaction(() => {
     db.prepare(`
       INSERT INTO products
-        (id,brand_key,name,italic,category,sub,size,variant,liquid,liquid_top,copy,price,sale_price,off_pct,is_new,is_bestseller,is_active,stock,editor_pick_sort,editor_tag)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (id,brand_key,name,italic,category,sub,size,variant,liquid,liquid_top,copy,price,sale_price,off_pct,is_new,is_bestseller,is_active,stock,editor_pick_sort,editor_tag,meta_title,meta_desc)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       d.id, d.brand_key, d.name, d.italic || null, d.category, d.sub || null, d.size || null,
       d.variant || null, d.liquid || null, d.liquid_top || null, d.copy || null,
       d.price, d.sale_price || null, d.off_pct || null,
       d.is_new ? 1 : 0, d.is_bestseller ? 1 : 0, d.is_active === false ? 0 : 1, d.stock || 0,
-      d.editor_pick_sort ?? null, d.editor_tag || null,
+      d.editor_pick_sort ?? null, d.editor_tag || null, d.meta_title || null, d.meta_desc || null,
     );
     writeConcernsNotes(d.id, d.concerns, d.notes);
   })();
@@ -1093,6 +1180,8 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
     stock:            req.body.stock            ?? cur.stock ?? 0,
     editor_pick_sort: req.body.editor_pick_sort !== undefined ? req.body.editor_pick_sort : cur.editor_pick_sort,
     editor_tag:       req.body.editor_tag       !== undefined ? req.body.editor_tag       : cur.editor_tag,
+    meta_title:       req.body.meta_title       !== undefined ? req.body.meta_title       : cur.meta_title,
+    meta_desc:        req.body.meta_desc        !== undefined ? req.body.meta_desc        : cur.meta_desc,
     concerns:         req.body.concerns         ?? curConcerns,
     notes:            req.body.notes            ?? curNotes,
   };
@@ -1105,14 +1194,14 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
         brand_key=?, name=?, italic=?, category=?, sub=?, size=?, variant=?,
         liquid=?, liquid_top=?, copy=?, price=?, sale_price=?, off_pct=?,
         is_new=?, is_bestseller=?, is_active=?, stock=?,
-        editor_pick_sort=?, editor_tag=?
+        editor_pick_sort=?, editor_tag=?, meta_title=?, meta_desc=?
       WHERE id=?
     `).run(
       d.brand_key, d.name, d.italic || null, d.category, d.sub || null, d.size || null,
       d.variant || null, d.liquid || null, d.liquid_top || null, d.copy || null,
       d.price, d.sale_price || null, d.off_pct || null,
       d.is_new ? 1 : 0, d.is_bestseller ? 1 : 0, d.is_active === false ? 0 : 1, d.stock || 0,
-      d.editor_pick_sort ?? null, d.editor_tag || null,
+      d.editor_pick_sort ?? null, d.editor_tag || null, d.meta_title || null, d.meta_desc || null,
       id,
     );
     writeConcernsNotes(id, d.concerns, d.notes);
@@ -1804,8 +1893,9 @@ app.get("/product/:id", (req, res) => {
   const brandName = brand?.name || p.brandName || "";
   const price = p.sale || p.price;
   const img = p.image ? absoluteUrl(req, p.image) : (s["seo.og_image"] ? absoluteUrl(req, s["seo.og_image"]) : undefined);
-  const title = `${p.name}${p.italic ? " " + p.italic : ""} — ${brandName} — ${siteName}`;
-  const desc  = stripHtml(p.copy) || `${p.name} ${p.italic || ""} from ${brandName} at ${siteName}.`;
+  // Prefer admin/AI-authored SEO fields when present, else fall back to generated ones.
+  const title = p.metaTitle || `${p.name}${p.italic ? " " + p.italic : ""} — ${brandName} — ${siteName}`;
+  const desc  = p.metaDesc || stripHtml(p.copy) || `${p.name} ${p.italic || ""} from ${brandName} at ${siteName}.`;
   const product = {
     "@context": "https://schema.org",
     "@type": "Product",
