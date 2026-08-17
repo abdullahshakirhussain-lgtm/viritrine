@@ -39,7 +39,7 @@ function TrackPage() {
   const lookup = async (n, e) => {
     setErr(""); setBusy(true);
     try {
-      const url = "/api/orders/by-number/" + encodeURIComponent(n) + (e ? ("?email=" + encodeURIComponent(e)) : "");
+      const url = "/api/track?number=" + encodeURIComponent(n) + (e ? ("&email=" + encodeURIComponent(e)) : "");
       const r = await window.api.get(url);
       setData(r);
     } catch (ex) {
@@ -113,9 +113,8 @@ function TrackPage() {
             </div>
 
             <div style={{marginTop:18,fontSize:13,color:"var(--ink-2)"}}>
-              Shipping to <b>{data.order.full_name}</b><br/>
-              {data.order.line1}{data.order.line2 ? ", " + data.order.line2 : ""}<br/>
-              {data.order.city} {data.order.postcode || ""}, Sri Lanka
+              Order for <b>{data.order.first_name}</b>{data.order.phone_masked ? <> · {data.order.phone_masked}</> : null}<br/>
+              For your privacy, full delivery details aren't shown here — <a href="account.html">sign in</a> to view them.
             </div>
           </div>
         )}

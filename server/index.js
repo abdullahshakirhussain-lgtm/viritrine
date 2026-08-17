@@ -13,18 +13,47 @@ const { z } = require("zod");
 try { require("dotenv").config(); } catch (_) {}
 
 const db = require("./db");
+const { sendSms, smsConfigured } = require("./sms");
 
 const PORT = parseInt(process.env.PORT || "4000", 10);
-const JWT_SECRET = process.env.JWT_SECRET || "dev-only-secret-please-change-in-env";
 const IS_PROD = process.env.NODE_ENV === "production";
 
+// Auth secret — accept JWT_SECRET or AUTH_SECRET. In production we refuse to boot
+// with a missing/short secret (a weak secret = forgeable sessions). Dev gets a
+// clearly-labelled fallback so `npm start` works out of the box.
+const rawSecret = process.env.JWT_SECRET || process.env.AUTH_SECRET;
+const JWT_SECRET = rawSecret || "dev-only-secret-please-change-in-env";
+if (IS_PROD && (!rawSecret || rawSecret.length < 16)) {
+  throw new Error("Refusing to boot: set JWT_SECRET (or AUTH_SECRET) to a strong value (≥16 chars) in production.");
+}
+
 const app = express();
+
+// Baseline security headers on every response.
+app.use((_req, res, next) => {
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
+
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 app.use(cors({ origin: true, credentials: true }));
 
-const tightLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
-const loose      = rateLimit({ windowMs: 60 * 1000, max: 240 });
+// ── Rate limiters ────────────────────────────────────────
+// Shared IPv4/IPv6-safe key so limiter.resetKey(key) matches the key used to count.
+const ipKey = (req) => req.ip;
+const makeLimiter = (windowMs, max, msg) =>
+  rateLimit({ windowMs, max, keyGenerator: ipKey, message: { error: msg || "Too many requests — please slow down." } });
+
+const tightLimit  = makeLimiter(15 * 60 * 1000, 30);
+const loose       = makeLimiter(60 * 1000, 240);
+const loginLimit  = makeLimiter(5 * 60 * 1000, 10, "Too many login attempts — try again in a few minutes.");
+const otpLimit    = makeLimiter(10 * 60 * 1000, 10, "Too many code requests — try again later.");
+const uploadLimit = makeLimiter(10 * 60 * 1000, 10, "Too many uploads — try again later.");
+const trackLimit  = makeLimiter(60 * 1000, 20, "Too many tracking lookups — try again in a minute.");
 app.use("/api", loose);
 
 // ── File uploads ────────────────────────────────────────
@@ -33,14 +62,21 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(path.join(UPLOAD_DIR, "products"), { recursive: true });
 fs.mkdirSync(path.join(UPLOAD_DIR, "brands"),   { recursive: true });
 
+// Derive the file extension from the *validated* content-type, never the
+// client-supplied filename (which can be spoofed, e.g. shell.php.jpg).
+const MIME_EXT = {
+  "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
+  "image/webp": ".webp", "image/avif": ".avif", "image/gif": ".gif",
+};
+const extFromMime = (m) => MIME_EXT[m] || ".bin";
+
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
     const sub = req.params.kind === "brands" ? "brands" : "products";
     cb(null, path.join(UPLOAD_DIR, sub));
   },
   filename: (_req, file, cb) => {
-    const ext = (path.extname(file.originalname) || ".jpg").toLowerCase().replace(/[^.\w]/g, "");
-    cb(null, crypto.randomBytes(10).toString("hex") + ext);
+    cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype));
   },
 });
 const upload = multer({
@@ -144,6 +180,25 @@ const hydrateProduct = (row) => {
 };
 
 const lineUnit = (p) => p.sale_price || p.price;
+
+// Crypto-random order number. Math.random() is guessable — and since order
+// tracking is reachable by number, guessable numbers leak order data. We use an
+// unambiguous alphabet (no 0/O/1/I/L) and crypto.randomInt (unbiased), then retry
+// on the (astronomically unlikely) UNIQUE collision.
+const ORDER_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const orderCode = (len = 8) => {
+  let out = "";
+  for (let i = 0; i < len; i++) out += ORDER_ALPHABET[crypto.randomInt(ORDER_ALPHABET.length)];
+  return out;
+};
+const makeOrderNumber = () => {
+  const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  for (let i = 0; i < 5; i++) {
+    const n = `VTR-${date}-${orderCode(8)}`;
+    if (!db.prepare("SELECT 1 FROM orders WHERE number=?").get(n)) return n;
+  }
+  return `VTR-${date}-${orderCode(12)}`; // fallback with more entropy
+};
 
 // Settings helpers — read shipping rates (and other config) from the settings table.
 const getSetting = (key, fallback) => {
@@ -390,8 +445,133 @@ app.post("/api/auth/signup", tightLimit, (req, res) => {
   res.json({ user });
 });
 
+/* ── phone-OTP sign-up ───────────────────────────────── */
+// Normalize a Sri Lankan mobile number to 94XXXXXXXXX (94 + 9 digits).
+//   0771234567  → 94771234567
+//   +94 77 123 4567 → 94771234567
+//   771234567   → 94771234567
+// Returns null if it isn't a plausible LK mobile number.
+const normalizePhoneLK = (raw) => {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.startsWith("0")) d = "94" + d.slice(1);
+  else if (d.length === 9) d = "94" + d;      // bare 7XXXXXXXX
+  return /^94\d{9}$/.test(d) ? d : null;
+};
+
+const sha256 = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
+const gen6 = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+
+const OTP_TTL_SEC     = 10 * 60;   // code valid for 10 minutes
+const OTP_RESEND_SEC  = 60;        // min gap between sends to one phone
+const OTP_MAX_ATTEMPTS = 5;        // wrong guesses before lockout
+const OTP_VERIFY_WINDOW_SEC = 15 * 60; // after verify, time allowed to finish signup
+
+// Step 1 — request a code for a phone number.
+app.post("/api/auth/otp/request", otpLimit, async (req, res) => {
+  const phone = normalizePhoneLK(req.body?.phone);
+  if (!phone) return res.status(400).json({ error: "Enter a valid Sri Lankan mobile number" });
+  if (db.prepare("SELECT id FROM users WHERE phone=?").get(phone))
+    return res.status(409).json({ error: "That number already has an account — please sign in." });
+
+  const now = Math.floor(Date.now() / 1000);
+  const existing = db.prepare("SELECT last_sent_at FROM otp_codes WHERE phone=?").get(phone);
+  if (existing && now - existing.last_sent_at < OTP_RESEND_SEC) {
+    const wait = OTP_RESEND_SEC - (now - existing.last_sent_at);
+    return res.status(429).json({ error: `Please wait ${wait}s before requesting another code.` });
+  }
+
+  const code = gen6();
+  // Upsert a single row per phone; issuing a new code resets attempts + verified.
+  db.prepare(`
+    INSERT INTO otp_codes (phone, code_hash, expires_at, attempts, last_sent_at, verified_at, created_at)
+    VALUES (?, ?, ?, 0, ?, NULL, ?)
+    ON CONFLICT(phone) DO UPDATE SET
+      code_hash=excluded.code_hash, expires_at=excluded.expires_at,
+      attempts=0, last_sent_at=excluded.last_sent_at, verified_at=NULL
+  `).run(phone, sha256(code), now + OTP_TTL_SEC, now, now);
+
+  try {
+    await sendSms(phone, `Your VITRINE verification code is ${code}. It expires in 10 minutes.`);
+  } catch (e) {
+    // On send failure, drop the unused code so the user can cleanly retry.
+    db.prepare("DELETE FROM otp_codes WHERE phone=?").run(phone);
+    return res.status(502).json({ error: "Couldn't send the code — please try again." });
+  }
+
+  // In dev (no SMS provider configured) surface the code so the flow is testable.
+  const payload = { ok: true, expiresInSec: OTP_TTL_SEC };
+  if (!IS_PROD && !smsConfigured) payload.devCode = code;
+  res.json(payload);
+});
+
+// Step 2 — verify the code. Marks the phone verified for a short window.
+app.post("/api/auth/otp/verify", otpLimit, (req, res) => {
+  const phone = normalizePhoneLK(req.body?.phone);
+  const code  = String(req.body?.code || "").trim();
+  if (!phone || !/^\d{6}$/.test(code)) return res.status(400).json({ error: "Enter the 6-digit code" });
+
+  const row = db.prepare("SELECT * FROM otp_codes WHERE phone=?").get(phone);
+  const now = Math.floor(Date.now() / 1000);
+  if (!row) return res.status(400).json({ error: "Request a code first." });
+  if (now > row.expires_at) {
+    db.prepare("DELETE FROM otp_codes WHERE phone=?").run(phone);
+    return res.status(400).json({ error: "Code expired — request a new one." });
+  }
+  if (row.attempts >= OTP_MAX_ATTEMPTS)
+    return res.status(429).json({ error: "Too many attempts — request a new code." });
+
+  if (sha256(code) !== row.code_hash) {
+    const attempts = row.attempts + 1;
+    db.prepare("UPDATE otp_codes SET attempts=? WHERE phone=?").run(attempts, phone);
+    const left = OTP_MAX_ATTEMPTS - attempts;
+    return res.status(400).json({ error: left > 0 ? `Wrong code — ${left} attempt${left === 1 ? "" : "s"} left.` : "Too many attempts — request a new code." });
+  }
+
+  db.prepare("UPDATE otp_codes SET verified_at=? WHERE phone=?").run(now, phone);
+  res.json({ verified: true, phone });
+});
+
+// Step 3 — finish sign-up (name + password) for a verified phone.
+const otpCompleteSchema = z.object({
+  phone:      z.string().min(1),
+  password:   z.string().min(6).max(200),
+  first_name: z.string().min(1).max(80),
+  last_name:  z.string().max(80).optional(),
+  email:      z.string().email().optional(),
+});
+app.post("/api/auth/otp/complete", tightLimit, (req, res) => {
+  const parsed = otpCompleteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.flatten() });
+  const phone = normalizePhoneLK(parsed.data.phone);
+  if (!phone) return res.status(400).json({ error: "Invalid phone number" });
+
+  const row = db.prepare("SELECT * FROM otp_codes WHERE phone=?").get(phone);
+  const now = Math.floor(Date.now() / 1000);
+  if (!row || !row.verified_at || now - row.verified_at > OTP_VERIFY_WINDOW_SEC)
+    return res.status(400).json({ error: "Please verify your phone number again." });
+  if (db.prepare("SELECT id FROM users WHERE phone=?").get(phone))
+    return res.status(409).json({ error: "That number already has an account." });
+
+  const { first_name, last_name, password } = parsed.data;
+  const email = parsed.data.email ? parsed.data.email.toLowerCase() : null;
+  if (email && db.prepare("SELECT id FROM users WHERE email=?").get(email))
+    return res.status(409).json({ error: "That email is already registered." });
+
+  const hash = bcrypt.hashSync(password, 10);
+  const info = db.prepare(
+    "INSERT INTO users (email,password_hash,first_name,last_name,phone) VALUES (?,?,?,?,?)"
+  ).run(email, hash, first_name, last_name || null, phone);
+  db.prepare("DELETE FROM otp_codes WHERE phone=?").run(phone); // consume the OTP
+
+  const user = db.prepare("SELECT id,email,first_name,last_name,phone,is_admin FROM users WHERE id=?").get(info.lastInsertRowid);
+  setAuthCookie(res, signToken(user));
+  const ct = req.cookies?.vt_cart;
+  if (ct) findOrCreateCart(ct, user.id); // merge anonymous cart into the new user
+  res.json({ user });
+});
+
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
-app.post("/api/auth/login", tightLimit, (req, res) => {
+app.post("/api/auth/login", loginLimit, (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
   const { email, password } = parsed.data;
@@ -399,6 +579,7 @@ app.post("/api/auth/login", tightLimit, (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: "Wrong email or password" });
   }
+  loginLimit.resetKey(req.ip); // successful login clears the failed-attempt counter for this IP
   const safe = { id: user.id, email: user.email, first_name: user.first_name, last_name: user.last_name, phone: user.phone, is_admin: user.is_admin };
   setAuthCookie(res, signToken(safe));
   const ct = req.cookies?.vt_cart;
@@ -538,7 +719,7 @@ app.post("/api/orders", (req, res) => {
   const subtotal = lines.reduce((s, l) => s + lineUnit(l) * l.qty, 0);
   const shipping = computeShipping(subtotal, data.delivery, data.payment);
   const total = subtotal + shipping;
-  const number = "VTR-" + new Date().toISOString().slice(2,10).replace(/-/g,"") + "-" + Math.floor(1000 + Math.random()*9000);
+  const number = makeOrderNumber();
 
   const tx = db.transaction(() => {
     const info = db.prepare(`
@@ -586,6 +767,44 @@ app.get("/api/orders/by-number/:number", (req, res) => {
   if (!ok) return res.status(403).json({ error: "Email required to view this order" });
   const items = db.prepare("SELECT * FROM order_items WHERE order_id=?").all(order.id);
   res.json({ order, items });
+});
+
+// Public order tracking — rate-limited, and returns ONLY minimal, masked data.
+// Gated by number + matching email (or an authenticated owner/admin). Never
+// returns the delivery address, email, or full phone — just first name + a
+// masked phone, status, and a line-item summary.
+const maskPhone = (p) => {
+  const d = String(p || "").replace(/\D/g, "");
+  if (d.length < 2) return "";
+  return "•".repeat(Math.max(2, d.length - 2)) + d.slice(-2);
+};
+app.get("/api/track", trackLimit, (req, res) => {
+  const number = (req.query.number || "").toString().trim();
+  const email  = (req.query.email  || "").toString().toLowerCase().trim();
+  if (!number) return res.status(400).json({ error: "Order number required" });
+
+  const order = db.prepare("SELECT * FROM orders WHERE number=?").get(number);
+  const u = readUser(req);
+  const owner = u && (u.is_admin || u.id === order?.user_id);
+  // Require proof of ownership: either signed-in owner/admin, or the matching email.
+  if (!order || (!owner && !(email && email === order.email))) {
+    // Same response whether the order is missing or the email is wrong — no enumeration.
+    return res.status(404).json({ error: "No order found for those details." });
+  }
+  const items = db.prepare("SELECT id, name, italic, qty, line_total FROM order_items WHERE order_id=?").all(order.id);
+  res.json({
+    order: {
+      number: order.number,
+      status: order.status,
+      created_at: order.created_at,
+      delivery: order.delivery,
+      payment: order.payment,
+      total: order.total,
+      first_name: (order.full_name || "").trim().split(/\s+/)[0] || "",
+      phone_masked: maskPhone(order.phone),
+    },
+    items,
+  });
 });
 
 /* ── newsletter + contact ────────────────────────────── */
@@ -777,7 +996,7 @@ app.delete("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
 });
 
 // Image upload for products + brands. URL param :kind = 'products' | 'brands'
-app.post("/api/admin/upload/:kind/:id", requireAuth, requireAdmin, (req, res, next) => {
+app.post("/api/admin/upload/:kind/:id", uploadLimit, requireAuth, requireAdmin, (req, res, next) => {
   if (!["products", "brands"].includes(req.params.kind)) return res.status(400).json({ error: "Invalid kind" });
   upload.single("image")(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
@@ -1148,7 +1367,7 @@ fs.mkdirSync(path.join(UPLOAD_DIR, "seo"), { recursive: true });
 const seoUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "seo")),
-    filename:    (_req, file, cb) => cb(null, "og" + (path.extname(file.originalname) || ".jpg").toLowerCase().replace(/[^.\w]/g, "")),
+    filename:    (_req, file, cb) => cb(null, "og" + extFromMime(file.mimetype)),
   }),
   limits: { fileSize: 6 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
@@ -1156,7 +1375,7 @@ const seoUpload = multer({
     cb(ok ? null : new Error("PNG / JPG / WEBP only"), ok);
   },
 });
-app.post("/api/admin/upload/seo", requireAuth, requireAdmin, (req, res) => {
+app.post("/api/admin/upload/seo", uploadLimit, requireAuth, requireAdmin, (req, res) => {
   seoUpload.single("image")(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: "No file" });
@@ -1172,7 +1391,7 @@ fs.mkdirSync(path.join(UPLOAD_DIR, "journal"), { recursive: true });
 const journalUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "journal")),
-    filename:    (_req, file, cb) => cb(null, crypto.randomBytes(10).toString("hex") + (path.extname(file.originalname) || ".jpg").toLowerCase().replace(/[^.\w]/g, "")),
+    filename:    (_req, file, cb) => cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype)),
   }),
   limits: { fileSize: 6 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
@@ -1180,7 +1399,7 @@ const journalUpload = multer({
     cb(ok ? null : new Error("Only PNG / JPG / WEBP / AVIF / GIF allowed"), ok);
   },
 });
-app.post("/api/admin/upload/journal/:id", requireAuth, requireAdmin, (req, res, next) => {
+app.post("/api/admin/upload/journal/:id", uploadLimit, requireAuth, requireAdmin, (req, res, next) => {
   journalUpload.single("image")(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: "No file" });

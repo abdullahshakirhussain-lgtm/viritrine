@@ -202,6 +202,18 @@ CREATE TABLE IF NOT EXISTS newsletter (
   created_at INTEGER DEFAULT (strftime('%s','now'))
 );
 
+-- Phone-OTP sign-up. One active row per phone (older rows are replaced on resend).
+-- code_hash = SHA-256 of the 6-digit code (never store it in plaintext).
+CREATE TABLE IF NOT EXISTS otp_codes (
+  phone        TEXT PRIMARY KEY,
+  code_hash    TEXT NOT NULL,
+  expires_at   INTEGER NOT NULL,             -- unix seconds; 10 min after issue
+  attempts     INTEGER NOT NULL DEFAULT 0,   -- wrong guesses; lock at 5
+  last_sent_at INTEGER NOT NULL DEFAULT 0,   -- for the 60s resend rate-limit
+  verified_at  INTEGER,                      -- set once the code is confirmed
+  created_at   INTEGER DEFAULT (strftime('%s','now'))
+);
+
 CREATE TABLE IF NOT EXISTS contact_messages (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
@@ -290,5 +302,51 @@ ensureColumn("products", "is_active",        "is_active INTEGER DEFAULT 1");
 ensureColumn("products", "editor_pick_sort", "editor_pick_sort INTEGER");
 ensureColumn("products", "editor_tag",       "editor_tag TEXT");
 ensureColumn("brands",   "image",            "image TEXT");
+
+// ── Phone-OTP sign-up: make users.email optional ───────────────────────────
+// Phone-first accounts have no email, but the original schema declared
+// `email TEXT UNIQUE NOT NULL`. SQLite can't drop a NOT NULL in place, so we
+// rebuild the table once (idempotent — only runs while the column is still
+// NOT NULL). Row ids are preserved, so every FK that references users(id)
+// stays valid. UNIQUE on email is kept (NULLs are exempt from UNIQUE in SQLite,
+// so multiple phone-only users are fine).
+function makeUserEmailNullable() {
+  const cols = raw.prepare("PRAGMA table_info(users)").all();
+  const email = cols.find(c => c.name === "email");
+  if (!email || email.notnull === 0) return; // already nullable (or table absent)
+
+  raw.exec("PRAGMA foreign_keys=OFF");
+  raw.exec("BEGIN");
+  try {
+    raw.exec(`
+      CREATE TABLE users_new (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        email         TEXT UNIQUE,
+        password_hash TEXT NOT NULL,
+        first_name    TEXT,
+        last_name     TEXT,
+        phone         TEXT,
+        is_admin      INTEGER DEFAULT 0,
+        created_at    INTEGER DEFAULT (strftime('%s','now'))
+      );
+    `);
+    raw.exec(`
+      INSERT INTO users_new (id,email,password_hash,first_name,last_name,phone,is_admin,created_at)
+      SELECT id,email,password_hash,first_name,last_name,phone,is_admin,created_at FROM users;
+    `);
+    raw.exec("DROP TABLE users");
+    raw.exec("ALTER TABLE users_new RENAME TO users");
+    raw.exec("COMMIT");
+  } catch (e) {
+    try { raw.exec("ROLLBACK"); } catch (_) {}
+    raw.exec("PRAGMA foreign_keys=ON");
+    throw e;
+  }
+  raw.exec("PRAGMA foreign_keys=ON");
+}
+makeUserEmailNullable();
+
+// Unique phone per account, but only when set (partial index → many NULLs allowed).
+raw.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) WHERE phone IS NOT NULL");
 
 module.exports = db;
