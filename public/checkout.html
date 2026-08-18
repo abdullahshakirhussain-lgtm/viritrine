@@ -53,6 +53,8 @@ function Checkout() {
       window.api.get("/api/auth/me").catch(() => ({ user: null })),
     ]).then(([c, m]) => {
       setCart(c);
+      // Begin-checkout analytics: only when there's actually a cart to check out.
+      if (c && c.count > 0) window.track && window.track("begin_checkout", { value: c.subtotal, meta: { items: c.items.length } });
       setMe(m.user);
       if (m.user) {
         setForm(f => ({

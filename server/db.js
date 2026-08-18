@@ -202,6 +202,18 @@ CREATE TABLE IF NOT EXISTS newsletter (
   created_at INTEGER DEFAULT (strftime('%s','now'))
 );
 
+-- Phone-OTP sign-up. One active row per phone (older rows are replaced on resend).
+-- code_hash = SHA-256 of the 6-digit code (never store it in plaintext).
+CREATE TABLE IF NOT EXISTS otp_codes (
+  phone        TEXT PRIMARY KEY,
+  code_hash    TEXT NOT NULL,
+  expires_at   INTEGER NOT NULL,             -- unix seconds; 10 min after issue
+  attempts     INTEGER NOT NULL DEFAULT 0,   -- wrong guesses; lock at 5
+  last_sent_at INTEGER NOT NULL DEFAULT 0,   -- for the 60s resend rate-limit
+  verified_at  INTEGER,                      -- set once the code is confirmed
+  created_at   INTEGER DEFAULT (strftime('%s','now'))
+);
+
 CREATE TABLE IF NOT EXISTS contact_messages (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
@@ -270,12 +282,39 @@ CREATE TABLE IF NOT EXISTS shop_locations (
   active     INTEGER DEFAULT 1
 );
 
+-- ── Owned analytics (first-party) ──────────────────────────────────────────
+-- One row per visitor session (sh_sid-equivalent cookie). Phone is stored ONLY
+-- as a hash (for repeat-buyer matching) + last 4 (for eyeball recognition) —
+-- never the full number, which lives in orders alone. Attached at checkout.
+CREATE TABLE IF NOT EXISTS analytics_sessions (
+  id          TEXT PRIMARY KEY,             -- the sh_sid cookie value
+  phone_hash  TEXT,                         -- SHA-256 of normalized phone (nullable)
+  phone_last4 TEXT,                         -- last 4 digits, for recognition
+  first_seen  INTEGER DEFAULT (strftime('%s','now')),
+  last_seen   INTEGER DEFAULT (strftime('%s','now'))
+);
+
+-- Append-only event log. Common columns per the brief; meta is free-form JSON.
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  type       TEXT NOT NULL,                 -- product_view | search | add_to_cart | begin_checkout | whatsapp_click | purchase
+  product_id TEXT,
+  value      INTEGER,                       -- e.g. order total, in LKR
+  meta       TEXT,                          -- JSON-encoded extras (query, model, etc.)
+  created_at INTEGER DEFAULT (strftime('%s','now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_products_brand    ON products(brand_key);
 CREATE INDEX IF NOT EXISTS idx_products_cat      ON products(category);
 CREATE INDEX IF NOT EXISTS idx_cart_items_cart   ON cart_items(cart_id);
 CREATE INDEX IF NOT EXISTS idx_orders_user       ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_email      ON orders(email);
 CREATE INDEX IF NOT EXISTS idx_journal_published ON journal_posts(published_at);
+CREATE INDEX IF NOT EXISTS idx_events_session    ON analytics_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_events_type       ON analytics_events(type);
+CREATE INDEX IF NOT EXISTS idx_events_created    ON analytics_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_events_product    ON analytics_events(product_id);
 `);
 
 // ── Safe column migrations for upgrading existing databases ────────────────
@@ -289,6 +328,54 @@ ensureColumn("products", "image",            "image TEXT");
 ensureColumn("products", "is_active",        "is_active INTEGER DEFAULT 1");
 ensureColumn("products", "editor_pick_sort", "editor_pick_sort INTEGER");
 ensureColumn("products", "editor_tag",       "editor_tag TEXT");
+ensureColumn("products", "meta_title",        "meta_title TEXT");   // AI-drafted SEO <title>
+ensureColumn("products", "meta_desc",         "meta_desc TEXT");    // AI-drafted SEO description
 ensureColumn("brands",   "image",            "image TEXT");
+
+// ── Phone-OTP sign-up: make users.email optional ───────────────────────────
+// Phone-first accounts have no email, but the original schema declared
+// `email TEXT UNIQUE NOT NULL`. SQLite can't drop a NOT NULL in place, so we
+// rebuild the table once (idempotent — only runs while the column is still
+// NOT NULL). Row ids are preserved, so every FK that references users(id)
+// stays valid. UNIQUE on email is kept (NULLs are exempt from UNIQUE in SQLite,
+// so multiple phone-only users are fine).
+function makeUserEmailNullable() {
+  const cols = raw.prepare("PRAGMA table_info(users)").all();
+  const email = cols.find(c => c.name === "email");
+  if (!email || email.notnull === 0) return; // already nullable (or table absent)
+
+  raw.exec("PRAGMA foreign_keys=OFF");
+  raw.exec("BEGIN");
+  try {
+    raw.exec(`
+      CREATE TABLE users_new (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        email         TEXT UNIQUE,
+        password_hash TEXT NOT NULL,
+        first_name    TEXT,
+        last_name     TEXT,
+        phone         TEXT,
+        is_admin      INTEGER DEFAULT 0,
+        created_at    INTEGER DEFAULT (strftime('%s','now'))
+      );
+    `);
+    raw.exec(`
+      INSERT INTO users_new (id,email,password_hash,first_name,last_name,phone,is_admin,created_at)
+      SELECT id,email,password_hash,first_name,last_name,phone,is_admin,created_at FROM users;
+    `);
+    raw.exec("DROP TABLE users");
+    raw.exec("ALTER TABLE users_new RENAME TO users");
+    raw.exec("COMMIT");
+  } catch (e) {
+    try { raw.exec("ROLLBACK"); } catch (_) {}
+    raw.exec("PRAGMA foreign_keys=ON");
+    throw e;
+  }
+  raw.exec("PRAGMA foreign_keys=ON");
+}
+makeUserEmailNullable();
+
+// Unique phone per account, but only when set (partial index → many NULLs allowed).
+raw.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) WHERE phone IS NOT NULL");
 
 module.exports = db;

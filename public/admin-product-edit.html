@@ -31,6 +31,7 @@ const BLANK = {
   stock: 25, concerns: [], notes: [],
   image: null,
   editor_pick_sort: null, editor_tag: "",
+  meta_title: "", meta_desc: "",
 };
 
 function ProductEdit() {
@@ -45,6 +46,8 @@ function ProductEdit() {
   const [err, setErr]     = React.useState("");
   const [saved, setSaved] = React.useState(false);
   const [noteText, setNoteText] = React.useState("");
+  const [aiBusy, setAiBusy] = React.useState(false);
+  const [aiNote, setAiNote] = React.useState("");
   const fileRef = React.useRef(null);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -74,6 +77,7 @@ function ProductEdit() {
           image: p.image || null,
           editor_pick_sort: p.editorPickSort,
           editor_tag: p.editorTag || "",
+          meta_title: p.metaTitle || "", meta_desc: p.metaDesc || "",
         });
       }).catch(e => setErr(e.message));
     }
@@ -133,6 +137,48 @@ function ProductEdit() {
     catch (e) { setErr(e.message); }
   };
 
+  // Send the chosen/uploaded photo to the AI endpoint and pre-fill empty fields.
+  // Brand + category are auto-defaulted to the first option for new products, so we
+  // let the AI's confident guesses replace those two; free-text fields are only
+  // filled when still empty (never clobber what the owner already typed).
+  const analyzePhoto = async () => {
+    setErr(""); setAiNote(""); setAiBusy(true);
+    try {
+      let draft;
+      if (pendingFile) {
+        const fd = new FormData();
+        fd.append("image", pendingFile);
+        const r = await fetch("/api/admin/ai/describe-product", { method: "POST", credentials: "include", body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "Couldn't analyze the photo");
+        draft = data.draft;
+      } else if (form.image) {
+        draft = (await window.api.post("/api/admin/ai/describe-product", { imageUrl: form.image })).draft;
+      } else {
+        setErr("Add a photo first, then analyze."); setAiBusy(false); return;
+      }
+      setForm(f => {
+        const next = { ...f };
+        const fillEmpty = (k, v) => { if (v && !String(next[k] || "").trim()) next[k] = v; };
+        fillEmpty("name", draft.name);
+        fillEmpty("italic", draft.italic);
+        fillEmpty("size", draft.size);
+        fillEmpty("sub", draft.sub);
+        fillEmpty("copy", draft.copy);
+        fillEmpty("meta_title", draft.meta_title);
+        fillEmpty("meta_desc", draft.meta_desc);
+        if (draft.category) next.category = draft.category;        // override the arbitrary default
+        if (draft.brand_guess) next.brand_key = draft.brand_guess; // override the arbitrary default
+        if (draft.concerns?.length && next.concerns.length === 0) next.concerns = draft.concerns;
+        if (draft.notes?.length && next.notes.length === 0) next.notes = draft.notes;
+        return next;
+      });
+      setAiNote("AI-suggested — review every field (and set the price) before saving.");
+    } catch (ex) {
+      setErr(ex.message || "Couldn't analyze the photo");
+    } finally { setAiBusy(false); }
+  };
+
   const toggleConcern = (k) => set("concerns", form.concerns.includes(k) ? form.concerns.filter(c => c !== k) : [...form.concerns, k]);
   const addNote = () => { if (!noteText.trim()) return; set("notes", [...form.notes, noteText.trim()]); setNoteText(""); };
   const removeNote = (i) => set("notes", form.notes.filter((_, idx) => idx !== i));
@@ -185,6 +231,17 @@ function ProductEdit() {
               <div className="field" style={{marginTop:14}}>
                 <label>Description</label>
                 <textarea value={form.copy || ""} onChange={e => set("copy", e.target.value)} placeholder="Editorial product description…" style={{minHeight:120}}></textarea>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3><em>SEO</em></h3>
+              <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>Overrides the auto-generated page title/description. Leave blank to use the defaults built from the name and brand.</p>
+              <div className="field"><label>Meta title</label>
+                <input className="input" value={form.meta_title || ""} maxLength="200" onChange={e => set("meta_title", e.target.value)} placeholder="Prime … Industrial …  (≈60 chars)" />
+              </div>
+              <div className="field" style={{marginTop:14}}><label>Meta description</label>
+                <textarea value={form.meta_desc || ""} maxLength="400" onChange={e => set("meta_desc", e.target.value)} placeholder="Search-result description (≈150 chars)" style={{minHeight:70}}></textarea>
               </div>
             </section>
 
@@ -282,6 +339,12 @@ function ProductEdit() {
                   </span>
                 </div>
               </div>
+              <button type="button" className="btn-ghost" style={{width:"100%",justifyContent:"center",marginTop:12}}
+                      disabled={aiBusy || (!pendingFile && !form.image)} onClick={analyzePhoto}>
+                {aiBusy ? "Analyzing…" : "✨ Analyze photo with AI"}
+              </button>
+              {aiNote && <p style={{fontSize:12,color:"var(--teal)",margin:"8px 0 0",lineHeight:1.5}}>{aiNote}</p>}
+              <p style={{fontSize:11,color:"var(--ink-3)",margin:"6px 0 0"}}>Drafts the name, size, category, description &amp; SEO from the photo. You review before saving.</p>
             </section>
 
             <section className="form-section">

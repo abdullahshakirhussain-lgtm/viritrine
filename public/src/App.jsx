@@ -101,7 +101,10 @@ function Hero() {
   React.useEffect(() => {
     window.api?.get("/api/hero-slides")
       .then(rows => {
-        // Normalize API shape → the existing render shape. Empty array = clear.
+        // No admin-configured slides → fall back to the built-in showcase set so the
+        // hero (and its 3D centrepiece) always render.
+        if (!rows || rows.length === 0) { setSlides(HERO_SLIDES); return; }
+        // Normalize API shape → the existing render shape.
         setSlides((rows || []).map(p => ({
           productId: p.id,
           brand: p.brand,
@@ -118,7 +121,7 @@ function Hero() {
           accent: p.brandName && BRANDS[p.brand]?.accent,
         })));
       })
-      .catch(() => setSlides([]));
+      .catch(() => setSlides(HERO_SLIDES));
   }, []);
 
   // Guard every `slides.length` against the initial null state.
@@ -156,73 +159,32 @@ function Hero() {
     b.font?.startsWith("Manrope") ? "sans" : "";
 
   return (
-    <section className="hero" data-screen-label="01 Hero"
+    <section className="gl-hero" data-screen-label="01 Hero"
              onMouseEnter={() => setPaused(true)}
-             onMouseLeave={() => setPaused(false)}
-             onTouchStart={onTouchStart}
-             onTouchMove={onTouchMove}
-             onTouchEnd={onTouchEnd}>
-      <div className="hero-meta tl">
-        <div>Issue <b>21</b></div>
-        <div>Spring &middot; Summer 2026</div>
-      </div>
-      <div className="hero-meta tr">
-        <div>Colombo &middot; 03</div>
-        <div><b>42 Brands &middot; 318 Pieces</b></div>
+             onMouseLeave={() => setPaused(false)}>
+      <div className="gl-hero-caption">
+        <div className="gl-eyebrow"><span className="gl-dot"></span>{active.tag}</div>
+        <div className="gl-house">{b.name}</div>
+        <h1 className="gl-title" key={"t-" + idx}>{active.title} <em>{active.italic}</em></h1>
+        <p className="gl-copy" key={"c-" + idx}>{active.copy}</p>
+        <div className="gl-price">{active.price}<span>{active.size}</span></div>
+        <div className="gl-cta">
+          <button className="btn-solid" onClick={() => addToBag(active.productId, 1)}>
+            Add to Bag
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <a className="btn-ghost" href={"/product/" + active.productId}>View Details</a>
+        </div>
+        <div className="gl-dots" role="tablist">
+          {slides.map((_, i) => (
+            <button key={i} className={i === safeIdx ? "on" : ""}
+                    onClick={() => setIdx(i)} aria-label={"Slide " + (i + 1)}></button>
+          ))}
+        </div>
       </div>
 
-      <div className="hero-split">
-        <div className="hero-caption">
-          <div className="hero-tag"><span className="pulse"></span>{active.tag}</div>
-          <div className={"hero-house " + houseCls} key={"h-" + idx}>{b.name}</div>
-          <h1 className="hero-title-c" key={"t-" + idx}>
-            {active.title} <em>{active.italic}</em>
-          </h1>
-          <p className="hero-copy" key={"c-" + idx}>{active.copy}</p>
-          <div className="hero-row">
-            <div className="hero-price">{active.price}<small>{active.size}</small></div>
-          </div>
-          <div className="hero-row" style={{ marginTop: 4 }}>
-            <button className="btn-solid" onClick={() => addToBag(active.productId, 1)}>
-              Add to Bag
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-            <a className="btn-ghost" href={"/product/" + active.productId}>View Details</a>
-          </div>
-          <div className="hero-dots" role="tablist">
-            {slides.map((_, i) => (
-              <button key={i} className={"hero-dot" + (i === safeIdx ? " active" : "")}
-                      onClick={() => setIdx(i)} aria-label={"Slide " + (i + 1)}></button>
-            ))}
-          </div>
-        </div>
-
-        <div className="hero-stage-c">
-          <div className="hero-stage-frame">
-            <div className="hero-stage-bg"></div>
-            <div className="hero-slide-tag">{b.name}</div>
-            <div className="hero-slide-tag r">{String(safeIdx + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")}</div>
-            {slides.map((s, i) => {
-              const sb = BRANDS[s.brand] || { name: "" };
-              return (
-                <div key={i} className={"hero-slide" + (i === safeIdx ? " active" : "")}>
-                  <ProductVisual
-                    image={s.image}
-                    variant={s.variant}
-                    brand={sb}
-                    product={{ name: s.italic }}
-                    liquid={s.liquid}
-                    liquidTop={s.liquidTop}
-                  />
-                </div>
-              );
-            })}
-            <div className="hero-slide-counter">
-              <span>{String(safeIdx + 1).padStart(2, "0")}</span>
-              <small>/ {String(slides.length).padStart(2, "0")}</small>
-            </div>
-          </div>
-        </div>
+      <div className="gl-hero-stage">
+        <canvas id="hero-gl-canvas" className="gl-canvas"></canvas>
       </div>
     </section>
   );
@@ -579,7 +541,7 @@ function Footer({ name, tagline }) {
         <div className="socials">
           {ig && <a href={ig} target="_blank">Instagram</a>}
           {pi && <a href={pi} target="_blank">Pinterest</a>}
-          {wa && <a href={wa} target="_blank">WhatsApp</a>}
+          {wa && <a href={wa} target="_blank" onClick={() => window.track && window.track("whatsapp_click", { meta: { where: "footer" } })}>WhatsApp</a>}
         </div>
       </div>
     </footer>

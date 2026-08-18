@@ -22,6 +22,99 @@
 <script type="text/babel" src="src/admin-shell.jsx"></script>
 
 <script type="text/babel">
+// Owned-analytics panel — funnel, top products, viewed-together pairs, KPIs.
+// Reads /api/admin/analytics for the selected date range (7/30/90 days).
+function Analytics() {
+  const [range, setRange] = React.useState(30);
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    setLoading(true);
+    window.api.get("/api/admin/analytics?range=" + range).then(d => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+  }, [range]);
+
+  const maxFunnel = data && data.funnel.length ? Math.max(1, data.funnel[0].count) : 1;
+
+  return (
+    <div className="form-section">
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+        <h3>Store <em>analytics</em></h3>
+        <div style={{display:"flex",gap:6}}>
+          {[7,30,90].map(r => (
+            <button key={r} type="button" className={r === range ? "btn-solid" : "btn-ghost"}
+                    style={{padding:"6px 14px",fontSize:12}} onClick={() => setRange(r)}>{r}d</button>
+          ))}
+        </div>
+      </div>
+
+      {loading && <p style={{color:"var(--ink-2)"}}>Loading…</p>}
+      {!loading && !data && <p style={{color:"var(--ink-2)"}}>No analytics yet.</p>}
+
+      {!loading && data && (
+        <div>
+          {/* KPI row */}
+          <div className="stat-grid" style={{marginTop:6}}>
+            <div className="stat-card"><div className="l">Sessions ({range}d)</div><div className="v">{data.totals.sessions}</div></div>
+            <div className="stat-card"><div className="l">WhatsApp clicks</div><div className="v">{data.totals.whatsapp}</div></div>
+            <div className="stat-card"><div className="l">Known customers</div><div className="v">{data.knownCustomers}</div></div>
+            <div className="stat-card"><div className="l">Repeat customers</div><div className="v">{data.repeatCustomers}</div></div>
+          </div>
+
+          {/* Funnel */}
+          <div style={{marginTop:22}}>
+            <div style={{fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",color:"var(--ink-2)",marginBottom:12}}>Conversion funnel</div>
+            {data.funnel.map(s => (
+              <div key={s.type} style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
+                  <span>{s.label}</span>
+                  <span><b>{s.count}</b>{s.dropoff != null && <em style={{color:"var(--ink-3)",fontSize:12}}> · {s.dropoff}% drop-off</em>}</span>
+                </div>
+                <div style={{height:8,background:"var(--line)",borderRadius:4,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:(Math.round((s.count/maxFunnel)*100))+"%",background:"var(--wine)"}}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Top products */}
+          <div style={{marginTop:24}}>
+            <div style={{fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",color:"var(--ink-2)",marginBottom:8}}>Top products</div>
+            {data.top.length === 0 ? <p style={{color:"var(--ink-3)",fontSize:13}}>No product views in this range.</p> : (
+              <div className="dt-wrap"><table className="dt">
+                <thead><tr><th>Product</th><th className="num">Views</th><th className="num">Cart-adds</th><th className="num">View→Cart</th></tr></thead>
+                <tbody>
+                  {data.top.map(p => (
+                    <tr key={p.productId}>
+                      <td><b>{p.name}</b> <span style={{color:"var(--ink-3)",fontSize:12}}>{p.brand}</span></td>
+                      <td className="num">{p.views}</td>
+                      <td className="num">{p.carts}</td>
+                      <td className="num">{p.conversion}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            )}
+          </div>
+
+          {/* Frequently viewed together */}
+          {data.pairs.length > 0 && (
+            <div style={{marginTop:24}}>
+              <div style={{fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",color:"var(--ink-2)",marginBottom:8}}>Frequently viewed together <span style={{textTransform:"none",letterSpacing:0,color:"var(--ink-3)"}}>· bundle ideas</span></div>
+              {data.pairs.map((p, i) => (
+                <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"6px 0",borderBottom:"1px solid var(--line)"}}>
+                  <span>{p.a} <span style={{color:"var(--ink-3)"}}>＋</span> {p.b}</span>
+                  <span style={{color:"var(--ink-2)"}}>{p.count} session{p.count === 1 ? "" : "s"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Dashboard() {
   const [stats, setStats] = React.useState(null);
   React.useEffect(() => {
@@ -41,6 +134,8 @@ function Dashboard() {
         <div className="stat-card"><div className="l">Newsletter</div><div className="v">{stats.newsletter}</div></div>
         <div className="stat-card"><div className="l">Messages</div><div className="v">{stats.messages}</div></div>
       </div>
+
+      <Analytics />
 
       <div className="form-section">
         <h3>Recent <em>orders</em></h3>

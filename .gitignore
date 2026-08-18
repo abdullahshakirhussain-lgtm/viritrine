@@ -3,3 +3,6 @@ server/data/*.db
 server/data/*.db-journal
 .env
 .DS_Store
+
+server/data/*.db-shm
+server/data/*.db-wal
