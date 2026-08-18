@@ -1,0 +1,34 @@
+/* ============================================================================
+   "Port of Entry" — product page only. Scoped under .po-root so it never
+   touches the rest of the site. Keyframes + :hover states (the design used a
+   DC-only `style-hover`, re-expressed here as real CSS) + reduced-motion.
+   ============================================================================ */
+.po-root a { color: #14181A; text-decoration: none; }
+.po-root a:hover { color: #E0511B; }
+.po-root ::selection { background: #0C3B34; color: #fff; }
+
+/* Interactive hover hooks used by the JSX */
+.po-root .po-hover:hover,
+.po-root .po-hover:hover span { color: #E0511B !important; }
+.po-root .po-add { transition: background .35s ease, letter-spacing .35s ease; }
+.po-root .po-add:hover { background: #E0511B !important; letter-spacing: .2em; }
+.po-root .po-thumb { transition: border-color .25s ease; }
+.po-root .po-thumb:hover { border-color: #E0511B !important; }
+.po-root .po-radd:hover { color: #E0511B !important; border-color: #E0511B !important; }
+.po-root .po-row:hover { background: #F5F8F7; }
+.po-root .po-bagbtn:hover { color: #E0511B !important; border-color: #E0511B !important; }
+.po-root .po-qtybtn:hover { color: #E0511B !important; }
+
+@keyframes poRise  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes poGlint { 0% { transform: translateX(-46%); opacity: 0; } 14% { opacity: .55; } 52% { transform: translateX(46%); opacity: 0; } 100% { transform: translateX(46%); opacity: 0; } }
+@keyframes poDrawer{ from { transform: translateX(102%); } to { transform: translateX(0); } }
+@keyframes poScrim { from { opacity: 0; } to { opacity: 1; } }
+@keyframes poRing  { from { opacity: .6; transform: scale(1); } to { opacity: 0; transform: scale(1.9); } }
+@keyframes poBar   { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .po-root *, .po-root *::before, .po-root *::after {
+    animation-duration: .001ms !important;
+    transition-duration: .001ms !important;
+  }
+}
