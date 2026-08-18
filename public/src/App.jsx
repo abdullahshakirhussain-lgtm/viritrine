@@ -132,6 +132,16 @@ function Hero() {
     return () => clearInterval(t);
   }, [paused, len]);
 
+  // Feed the active product's liquid colour to the WebGL hero so the drop is tinted
+  // to whatever's featured (updates as the carousel rotates).
+  React.useEffect(() => {
+    if (!slides || !slides.length) return;
+    const a = slides[idx % slides.length];
+    const tint = a?.liquid || a?.liquidTop || null;
+    window.__heroTint = tint;
+    if (tint) document.documentElement.style.setProperty("--hero-tint", tint);
+  }, [idx, slides]);
+
   const go = (dir) => { if (len > 0) setIdx(i => (i + dir + len) % len); };
 
   const onTouchStart = (e) => {

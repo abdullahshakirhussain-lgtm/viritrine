@@ -87,35 +87,45 @@ whenCanvas(async (canvas) => {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    // A touch of directional light for a crisp specular streak.
-    const key = new THREE.DirectionalLight(0xffffff, 1.4);
-    key.position.set(2, 3, 2);
-    scene.add(key);
+    // Studio lights for a wet, glossy highlight (env map handles fill/reflection).
+    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    key.position.set(2.5, 3.5, 2.5); scene.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 1.3);
+    rim.position.set(-3, 1, -2.5); scene.add(rim);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xdddde3, 0.5));
 
-    // Chrome metaballs — the "liquid chrome".
+    // A glossy, product-tinted liquid droplet (a "drop of the product") — NOT metal.
+    const targetTint = new THREE.Color("#6a1b3c");
+    const applyTint = () => { if (window.__heroTint) { try { targetTint.set(window.__heroTint); } catch {} } };
+    applyTint();
     const material = new THREE.MeshPhysicalMaterial({
-      color: 0xf3f4f7, metalness: 1.0, roughness: 0.045,
-      clearcoat: 1.0, clearcoatRoughness: 0.06, envMapIntensity: 1.15,
+      color: targetTint.clone(),
+      metalness: 0.0, roughness: 0.12,
+      clearcoat: 1.0, clearcoatRoughness: 0.08,
+      sheen: 0.5, sheenColor: new THREE.Color(0xffffff),
+      envMapIntensity: 1.25, ior: 1.45, specularIntensity: 1.0,
     });
     const resolution = isSmall ? 40 : 64;
     const blob = new MarchingCubes(resolution, material, true, false, 90000);
-    blob.scale.set(1.35, 1.35, 1.35);
+    blob.scale.set(1.4, 1.4, 1.4);
     blob.isolation = 60;
     scene.add(blob);
 
+    // A cohesive, gently wobbling droplet (small orbit so the mass stays together
+    // as one drop rather than a molecule of separate balls).
     function fillBlob(t) {
       blob.reset();
-      const strength = 0.62;
       const subtract = 12;
-      const n = 5;
+      blob.addBall(0.5, 0.5 + Math.sin(t * 0.9) * 0.03, 0.5, 0.95, subtract); // central mass
+      const n = 3;
       for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + t * 0.5;
-        const x = 0.5 + Math.cos(a) * (0.16 + 0.05 * Math.sin(t * 0.7 + i));
-        const y = 0.5 + Math.sin(a) * (0.16 + 0.05 * Math.cos(t * 0.6 + i));
-        const z = 0.5 + Math.sin(t * 0.8 + i * 1.7) * 0.13;
-        blob.addBall(x, y, z, strength, subtract);
+        const a = (i / n) * Math.PI * 2 + t * 0.55;
+        const rr = 0.11 + 0.03 * Math.sin(t * 1.1 + i);
+        const x = 0.5 + Math.cos(a) * rr;
+        const y = 0.5 + Math.sin(a) * rr;
+        const z = 0.5 + Math.sin(t * 0.7 + i) * 0.06;
+        blob.addBall(x, y, z, 0.55, subtract);
       }
-      blob.addBall(0.5, 0.5, 0.5, 0.5, subtract); // cohesive core
       blob.update();
     }
 
@@ -147,6 +157,7 @@ whenCanvas(async (canvas) => {
     function frame() {
       if (!running) return;
       const t = clock.getElapsedTime();
+      applyTint(); material.color.lerp(targetTint, 0.06); // ease toward the product colour
       fillBlob(t);
       blob.rotation.y = t * 0.18;
       blob.rotation.x = Math.sin(t * 0.2) * 0.12;
@@ -162,7 +173,7 @@ whenCanvas(async (canvas) => {
 
     if (reduceMotion) {
       // Single static frame, no loop.
-      resize(); fillBlob(1.2); blob.rotation.y = 0.6; renderer.render(scene, camera);
+      resize(); applyTint(); material.color.copy(targetTint); fillBlob(1.2); blob.rotation.y = 0.6; renderer.render(scene, camera);
     } else {
       const io = new IntersectionObserver((es) => {
         visible = es[0].isIntersecting;
