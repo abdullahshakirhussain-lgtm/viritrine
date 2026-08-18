@@ -2123,7 +2123,17 @@ app.use((req, res, next) => {
   res.set("Content-Type", "text/html; charset=utf-8").send(html);
 });
 
-app.use(express.static(PUBLIC_DIR, { extensions: ["html"], index: false }));
+app.use(express.static(PUBLIC_DIR, {
+  extensions: ["html"], index: false,
+  // Serve .jsx / .mjs with a real JS content-type so strict-MIME browsers execute
+  // classic scripts (e.g. src/api.jsx). Babel-standalone fetches text/babel scripts
+  // via XHR regardless, so this doesn't affect them.
+  setHeaders: (res, p) => {
+    if (p.endsWith(".jsx") || p.endsWith(".mjs")) {
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    }
+  },
+}));
 
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/")) return res.status(404).json({ error: "Not found" });
