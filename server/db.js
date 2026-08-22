@@ -295,6 +295,19 @@ CREATE TABLE IF NOT EXISTS analytics_sessions (
 );
 
 -- Append-only event log. Common columns per the brief; meta is free-form JSON.
+-- "The Key" premium-membership invites. Owner generates a code (optionally bound
+-- to an eligible customer's email); the customer redeems it to become premium.
+CREATE TABLE IF NOT EXISTS membership_invites (
+  code        TEXT PRIMARY KEY,
+  email       TEXT,                          -- optional: binds the invite to one customer
+  note        TEXT,
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  expires_at  INTEGER,                        -- unix seconds; NULL = no expiry
+  redeemed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  redeemed_at INTEGER,
+  created_at  INTEGER DEFAULT (strftime('%s','now'))
+);
+
 CREATE TABLE IF NOT EXISTS analytics_events (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT NOT NULL,
@@ -331,6 +344,9 @@ ensureColumn("products", "editor_tag",       "editor_tag TEXT");
 ensureColumn("products", "meta_title",        "meta_title TEXT");   // AI-drafted SEO <title>
 ensureColumn("products", "meta_desc",         "meta_desc TEXT");    // AI-drafted SEO description
 ensureColumn("brands",   "image",            "image TEXT");
+ensureColumn("users",    "tier",             "tier TEXT DEFAULT 'standard'"); // standard | premium
+ensureColumn("users",    "tier_since",        "tier_since INTEGER");
+ensureColumn("orders",   "discount",          "discount INTEGER DEFAULT 0");  // premium (The Key) discount
 
 // ── Phone-OTP sign-up: make users.email optional ───────────────────────────
 // Phone-first accounts have no email, but the original schema declared

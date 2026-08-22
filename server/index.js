@@ -139,7 +139,7 @@ const readUser = (req) => {
   if (!token) return null;
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    return db.prepare("SELECT id,email,first_name,last_name,phone,is_admin FROM users WHERE id=?").get(payload.uid) || null;
+    return db.prepare("SELECT id,email,first_name,last_name,phone,is_admin,tier FROM users WHERE id=?").get(payload.uid) || null;
   } catch { return null; }
 };
 
@@ -256,6 +256,17 @@ const computeShipping = (subtotal, delivery, payment) => {
   let s = delivery === "express" ? EXPRESS : (subtotal >= FREE_OVER ? 0 : STD);
   if (payment === "cod") s += COD_FEE;
   return s;
+};
+
+// ── Membership ("The Key") ───────────────────────────────
+const membershipCfg = () => ({
+  threshold:   getNumberSetting("membership.premium_threshold_lkr", 250000),
+  discountPct: getNumberSetting("membership.premium_discount_pct", 10),
+});
+// Lifetime spend = sum of a customer's non-cancelled/refunded order totals.
+const lifetimeSpend = (userId) => {
+  if (!userId) return 0;
+  return db.prepare("SELECT COALESCE(SUM(total),0) s FROM orders WHERE user_id=? AND status NOT IN ('cancelled','refunded')").get(userId).s;
 };
 
 const cartPayload = (cart_id) => {
@@ -477,7 +488,7 @@ app.post("/api/auth/signup", tightLimit, (req, res) => {
   const info = db.prepare(
     "INSERT INTO users (email,password_hash,first_name,last_name,phone) VALUES (?,?,?,?,?)"
   ).run(lower, hash, first_name || null, last_name || null, phone || null);
-  const user = db.prepare("SELECT id,email,first_name,last_name,phone,is_admin FROM users WHERE id=?").get(info.lastInsertRowid);
+  const user = db.prepare("SELECT id,email,first_name,last_name,phone,is_admin,tier FROM users WHERE id=?").get(info.lastInsertRowid);
   setAuthCookie(res, signToken(user));
   // Merge anonymous cart into this user
   const ct = req.cookies?.vt_cart;
@@ -603,7 +614,7 @@ app.post("/api/auth/otp/complete", tightLimit, (req, res) => {
   ).run(email, hash, first_name, last_name || null, phone);
   db.prepare("DELETE FROM otp_codes WHERE phone=?").run(phone); // consume the OTP
 
-  const user = db.prepare("SELECT id,email,first_name,last_name,phone,is_admin FROM users WHERE id=?").get(info.lastInsertRowid);
+  const user = db.prepare("SELECT id,email,first_name,last_name,phone,is_admin,tier FROM users WHERE id=?").get(info.lastInsertRowid);
   setAuthCookie(res, signToken(user));
   const ct = req.cookies?.vt_cart;
   if (ct) findOrCreateCart(ct, user.id); // merge anonymous cart into the new user
@@ -620,7 +631,7 @@ app.post("/api/auth/login", loginLimit, (req, res) => {
     return res.status(401).json({ error: "Wrong email or password" });
   }
   loginLimit.resetKey(req.ip); // successful login clears the failed-attempt counter for this IP
-  const safe = { id: user.id, email: user.email, first_name: user.first_name, last_name: user.last_name, phone: user.phone, is_admin: user.is_admin };
+  const safe = { id: user.id, email: user.email, first_name: user.first_name, last_name: user.last_name, phone: user.phone, is_admin: user.is_admin, tier: user.tier };
   setAuthCookie(res, signToken(safe));
   const ct = req.cookies?.vt_cart;
   if (ct) findOrCreateCart(ct, user.id);
@@ -643,7 +654,7 @@ app.patch("/api/auth/me", (req, res) => {
   const { first_name, last_name, phone } = req.body || {};
   db.prepare("UPDATE users SET first_name=?, last_name=?, phone=? WHERE id=?")
     .run(first_name || null, last_name || null, phone || null, u.id);
-  const fresh = db.prepare("SELECT id,email,first_name,last_name,phone,is_admin FROM users WHERE id=?").get(u.id);
+  const fresh = db.prepare("SELECT id,email,first_name,last_name,phone,is_admin,tier FROM users WHERE id=?").get(u.id);
   res.json({ user: fresh });
 });
 
@@ -730,6 +741,41 @@ app.delete("/api/wishlist/:productId", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+/* ── membership ("The Key") ──────────────────────────── */
+// Current customer's membership status — powers the account + Key pages.
+app.get("/api/membership", requireAuth, (req, res) => {
+  const row = db.prepare("SELECT tier, tier_since FROM users WHERE id=?").get(req.user.id) || {};
+  const cfg = membershipCfg();
+  const spend = lifetimeSpend(req.user.id);
+  res.json({
+    tier: row.tier || "standard",
+    tier_since: row.tier_since || null,
+    lifetime_spend: spend,
+    threshold: cfg.threshold,
+    eligible: spend >= cfg.threshold,
+    discount_pct: cfg.discountPct,
+    free_shipping: (row.tier === "premium"),
+  });
+});
+
+// Redeem an owner-issued invitation code → become premium.
+app.post("/api/membership/redeem", tightLimit, requireAuth, (req, res) => {
+  const code = String(req.body?.code || "").trim().toUpperCase();
+  if (!code) return res.status(400).json({ error: "Enter your invitation code." });
+  const inv = db.prepare("SELECT * FROM membership_invites WHERE code=?").get(code);
+  const now = Math.floor(Date.now() / 1000);
+  if (!inv) return res.status(404).json({ error: "That invitation code isn't valid." });
+  if (inv.redeemed_at) return res.status(409).json({ error: "That invitation has already been used." });
+  if (inv.expires_at && now > inv.expires_at) return res.status(410).json({ error: "That invitation has expired." });
+  if (inv.email && inv.email.toLowerCase() !== (req.user.email || "").toLowerCase())
+    return res.status(403).json({ error: "This invitation is for a different account." });
+  db.transaction(() => {
+    db.prepare("UPDATE users SET tier='premium', tier_since=? WHERE id=?").run(now, req.user.id);
+    db.prepare("UPDATE membership_invites SET redeemed_by=?, redeemed_at=? WHERE code=?").run(req.user.id, now, code);
+  })();
+  res.json({ ok: true, tier: "premium" });
+});
+
 /* ── checkout / orders ───────────────────────────────── */
 const orderSchema = z.object({
   email:    z.string().email(),
@@ -760,19 +806,23 @@ app.post("/api/orders", (req, res) => {
   `).all(cart.id);
   if (lines.length === 0) return res.status(400).json({ error: "Cart is empty" });
   const subtotal = lines.reduce((s, l) => s + lineUnit(l) * l.qty, 0);
-  const shipping = computeShipping(subtotal, data.delivery, data.payment);
-  const total = subtotal + shipping;
+  // "The Key" premium perks: free delivery + standing discount (server-authoritative).
+  const isPremium = !!(u && u.tier === "premium");
+  const cfg = membershipCfg();
+  const discount = isPremium ? Math.round(subtotal * (cfg.discountPct || 0) / 100) : 0;
+  const shipping = isPremium ? 0 : computeShipping(subtotal, data.delivery, data.payment);
+  const total = subtotal - discount + shipping;
   const number = makeOrderNumber();
 
   const tx = db.transaction(() => {
     const info = db.prepare(`
       INSERT INTO orders
-        (number,user_id,email,status,subtotal,shipping,total,delivery,payment,full_name,phone,line1,line2,city,postcode,country,note,samples,gift_wrap)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (number,user_id,email,status,subtotal,shipping,discount,total,delivery,payment,full_name,phone,line1,line2,city,postcode,country,note,samples,gift_wrap)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       number, u?.id || null, data.email.toLowerCase(),
       data.payment === "card" ? "awaiting_payment" : "pending",
-      subtotal, shipping, total, data.delivery, data.payment,
+      subtotal, shipping, discount, total, data.delivery, data.payment,
       data.full_name, data.phone, data.line1, data.line2 || null, data.city,
       data.postcode || null, data.country || "LK", data.note || null,
       (data.samples && data.samples.length) ? JSON.stringify(data.samples) : null,
@@ -1439,6 +1489,49 @@ app.get("/api/admin/newsletter", requireAuth, requireAdmin, (_req, res) => {
 });
 app.delete("/api/admin/newsletter/:email", requireAuth, requireAdmin, (req, res) => {
   db.prepare("DELETE FROM newsletter WHERE email=?").run(req.params.email);
+  res.json({ ok: true });
+});
+
+// ── admin: membership ("The Key") ───────────────────────────
+app.get("/api/admin/members", requireAuth, requireAdmin, (_req, res) => {
+  const cfg = membershipCfg();
+  const rows = db.prepare(`
+    SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.tier, u.tier_since, u.created_at,
+      (SELECT COALESCE(SUM(total),0) FROM orders o WHERE o.user_id=u.id AND o.status NOT IN ('cancelled','refunded')) AS lifetime_spend,
+      (SELECT COUNT(*)               FROM orders o WHERE o.user_id=u.id AND o.status NOT IN ('cancelled','refunded')) AS order_count
+    FROM users u WHERE u.is_admin=0
+    ORDER BY lifetime_spend DESC, u.created_at DESC
+  `).all();
+  res.json(rows.map(r => ({ ...r, eligible: r.lifetime_spend >= cfg.threshold, threshold: cfg.threshold })));
+});
+
+// Generate an invitation code bound to a customer's email.
+app.post("/api/admin/members/:id/invite", requireAuth, requireAdmin, (req, res) => {
+  const u = db.prepare("SELECT id, email FROM users WHERE id=?").get(req.params.id);
+  if (!u) return res.status(404).json({ error: "Customer not found" });
+  const code = "KEY-" + orderCode(8);
+  const days = Number(req.body?.expires_days);
+  const expires = days > 0 ? Math.floor(Date.now() / 1000) + days * 86400 : null;
+  db.prepare("INSERT INTO membership_invites (code,email,note,created_by,expires_at) VALUES (?,?,?,?,?)")
+    .run(code, u.email || null, req.body?.note || null, req.user.id, expires);
+  res.json({ ok: true, code, email: u.email });
+});
+
+// Directly grant/revoke premium.
+app.post("/api/admin/members/:id/tier", requireAuth, requireAdmin, (req, res) => {
+  const tier = String(req.body?.tier || "");
+  if (!["standard", "premium"].includes(tier)) return res.status(400).json({ error: "Invalid tier" });
+  if (!db.prepare("SELECT id FROM users WHERE id=?").get(req.params.id)) return res.status(404).json({ error: "Not found" });
+  db.prepare("UPDATE users SET tier=?, tier_since=? WHERE id=?")
+    .run(tier, tier === "premium" ? Math.floor(Date.now() / 1000) : null, req.params.id);
+  res.json({ ok: true });
+});
+
+app.get("/api/admin/membership/invites", requireAuth, requireAdmin, (_req, res) => {
+  res.json(db.prepare("SELECT * FROM membership_invites ORDER BY created_at DESC LIMIT 200").all());
+});
+app.delete("/api/admin/membership/invites/:code", requireAuth, requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM membership_invites WHERE code=? AND redeemed_at IS NULL").run(req.params.code);
   res.json({ ok: true });
 });
 

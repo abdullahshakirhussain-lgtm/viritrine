@@ -79,6 +79,7 @@ function Footer({ name = "VITRINE", tagline = "Beauty, Hand-Picked" }) {
           <a href="contact.html#returns">Returns</a>
           <a href="contact.html#gifting">Gift Wrapping</a>
           <a href="contact.html#faq">FAQ</a>
+          <a href="key.html">The Key</a>
         </div>
         <div className="footer-col"><h5>Visit</h5>
           {locs.length > 0 ? locs.slice(0, 2).map(l => (

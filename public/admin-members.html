@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Members — VITRINE Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+function Members() {
+  const [rows, setRows] = React.useState(null);
+  const [invites, setInvites] = React.useState([]);
+  const [flash, setFlash] = React.useState("");
+
+  const load = () => {
+    window.api.get("/api/admin/members").then(setRows);
+    window.api.get("/api/admin/membership/invites").then(setInvites).catch(() => {});
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const invite = async (r) => {
+    try {
+      const res = await window.api.post("/api/admin/members/" + r.id + "/invite", {});
+      setFlash("Invitation for " + (r.email || "customer") + ": " + res.code + "  (copy & send it)");
+      load();
+    } catch (e) { setFlash(e.message); }
+  };
+  const setTier = async (r, tier) => {
+    if (!adminConfirm((tier === "premium" ? "Grant" : "Revoke") + " the Key for " + (r.email || "this customer") + "?")) return;
+    await window.api.post("/api/admin/members/" + r.id + "/tier", { tier });
+    load();
+  };
+  const revokeInvite = async (code) => {
+    await window.api.del("/api/admin/membership/invites/" + code); load();
+  };
+
+  if (!rows) return <AdminShell active="members" title="Members"><p>Loading…</p></AdminShell>;
+
+  return (
+    <AdminShell active="members" eyebrow="The Key" title={<>Members &amp; <em>the Key</em></>}>
+      {flash && <div style={{ padding: "12px 16px", background: "color-mix(in oklab, var(--teal) 12%, transparent)", color: "var(--teal)", marginBottom: 18, fontSize: 13, fontFamily: "monospace", wordBreak: "break-all" }}>{flash}</div>}
+
+      <div className="form-section">
+        <h3>Customers <em>by spend</em></h3>
+        {rows.length === 0 ? (
+          <div className="empty-admin"><h3>No customers yet</h3><p>Registered customers appear here as they sign up and order.</p></div>
+        ) : (
+          <div className="dt-wrap"><table className="dt">
+            <thead><tr><th>Customer</th><th className="num">Lifetime</th><th className="num">Orders</th><th>Tier</th><th>Eligible</th><th></th></tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td><b>{[r.first_name, r.last_name].filter(Boolean).join(" ") || "—"}</b><br/><span style={{ color: "var(--ink-3)", fontSize: 12 }}>{r.email}</span></td>
+                  <td className="num">{adminFmtMoney(r.lifetime_spend)}</td>
+                  <td className="num">{r.order_count}</td>
+                  <td><span className={"pill " + (r.tier === "premium" ? "paid" : "")}>{r.tier === "premium" ? "The Key" : "Standard"}</span></td>
+                  <td>{r.tier === "premium" ? "—" : (r.eligible ? <span style={{ color: "var(--teal)" }}>Eligible ✓</span> : <span style={{ color: "var(--ink-3)" }}>Not yet</span>)}</td>
+                  <td className="row-actions" style={{ whiteSpace: "nowrap" }}>
+                    {r.tier === "premium"
+                      ? <a href="#" onClick={e => { e.preventDefault(); setTier(r, "standard"); }}>Revoke</a>
+                      : <>
+                          <a href="#" onClick={e => { e.preventDefault(); invite(r); }} style={{ color: r.eligible ? "var(--wine)" : "var(--ink-3)" }}>Invite</a>
+                          <span style={{ color: "var(--line-2)", margin: "0 8px" }}>·</span>
+                          <a href="#" onClick={e => { e.preventDefault(); setTier(r, "premium"); }}>Grant</a>
+                        </>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
+      </div>
+
+      <div className="form-section">
+        <h3>Invitations</h3>
+        {invites.length === 0 ? (
+          <p style={{ color: "var(--ink-3)", fontSize: 13, margin: 0 }}>No invitations issued yet. Use “Invite” above to generate a code.</p>
+        ) : (
+          <div className="dt-wrap"><table className="dt">
+            <thead><tr><th>Code</th><th>For</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {invites.map(iv => (
+                <tr key={iv.code}>
+                  <td style={{ fontFamily: "monospace" }}><b>{iv.code}</b></td>
+                  <td>{iv.email || "—"}</td>
+                  <td>{iv.redeemed_at ? <span className="pill paid">Redeemed</span> : <span className="pill">Open</span>}</td>
+                  <td className="row-actions">{!iv.redeemed_at && <a href="#" onClick={e => { e.preventDefault(); revokeInvite(iv.code); }}>Revoke</a>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
+      </div>
+
+      <div className="form-section">
+        <p style={{ color: "var(--ink-2)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+          Premium (“The Key”) perks — free delivery + a standing discount — and the eligibility threshold are set under <a href="admin-settings.html">Settings</a>.
+        </p>
+      </div>
+    </AdminShell>
+  );
+}
+mountAdmin(Members);
+</script>
+</body>
+</html>

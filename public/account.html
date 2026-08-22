@@ -26,6 +26,61 @@
 <script type="text/babel" src="src/page-shell.jsx"></script>
 
 <script type="text/babel">
+/* ── "The Key" membership card ── */
+function MembershipCard() {
+  const [m, setM] = React.useState(null);
+  const [code, setCode] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const load = () => window.api.get("/api/membership").then(setM).catch(() => {});
+  React.useEffect(() => { load(); }, []);
+  if (!m) return null;
+
+  const redeem = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try { await window.api.post("/api/membership/redeem", { code }); setCode(""); load(); window.dispatchEvent(new CustomEvent("cart:changed")); }
+    catch (ex) { setErr(ex.message || "Couldn't redeem that code"); }
+    finally { setBusy(false); }
+  };
+
+  if (m.tier === "premium") {
+    return (
+      <div style={{ padding: "22px 24px", marginBottom: 32, background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)" }}>
+        <div style={{ fontSize: 10.5, letterSpacing: "0.24em", textTransform: "uppercase", color: "var(--gold)" }}>The Key · Premium member{m.tier_since ? " since " + new Date(m.tier_since * 1000).getFullYear() : ""}</div>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 30, margin: "6px 0 14px" }}>You hold <em style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", color: "var(--gold)" }}>the Key</em>.</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 28px", fontSize: 13, color: "rgba(255,255,255,0.85)" }}>
+          <span>✦ Free delivery on every order</span>
+          {m.discount_pct > 0 && <span>✦ {m.discount_pct}% off, always</span>}
+          <span>✦ First refusal on new arrivals</span>
+        </div>
+      </div>
+    );
+  }
+
+  const pct = Math.min(100, Math.round((m.lifetime_spend / m.threshold) * 100));
+  const remaining = Math.max(0, m.threshold - m.lifetime_spend);
+  return (
+    <div style={{ padding: "22px 24px", marginBottom: 32, background: "var(--paper)", border: "1px solid var(--line-2)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ fontSize: 10.5, letterSpacing: "0.24em", textTransform: "uppercase", color: "var(--ink-3)" }}>Standard membership</div>
+        <div style={{ fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--gold-2)" }}>The Key · By invitation</div>
+      </div>
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 26, margin: "6px 0 16px" }}>Toward <em style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", color: "var(--wine)" }}>the Key</em>.</div>
+      <div style={{ height: 4, background: "var(--bg-2)", position: "relative", marginBottom: 8 }}>
+        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pct + "%", background: "var(--wine)" }}></div>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--ink-2)", marginBottom: 18 }}>
+        {window.fmtLKR(m.lifetime_spend)} of {window.fmtLKR(m.threshold)} lifetime · {remaining > 0 ? window.fmtLKR(remaining) + " to become eligible" : "You're eligible — watch for your invitation."}
+      </div>
+      <form onSubmit={redeem} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <input className="input" value={code} onChange={e => setCode(e.target.value)} placeholder="Have an invitation code?" style={{ flex: "1 1 220px", maxWidth: 300 }} />
+        <button className="btn-solid" disabled={busy || !code}>{busy ? "Redeeming…" : "Redeem"}</button>
+      </form>
+      {err && <div style={{ color: "var(--wine)", fontSize: 12, marginTop: 8 }}>{err}</div>}
+    </div>
+  );
+}
+
 function AccountPage() {
   const [me, setMe] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
@@ -82,6 +137,8 @@ function AccountPage() {
             <a href="admin.html" className="btn-solid" style={{background:"var(--paper)", color:"var(--wine)"}}>Go to Admin Dashboard ⟶</a>
           </div>
         )}
+
+        <MembershipCard />
 
         <div className="acct-grid">
           <aside className="acct-side">

@@ -103,6 +103,15 @@ function SettingsAdmin() {
         </section>
 
         <section className="form-section">
+          <h3>Membership — <em>The Key</em></h3>
+          <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>Premium members (invited via <a href="admin-members.html">Members</a>) always get free delivery, plus this discount. Eligibility is offered once a customer's lifetime spend passes the threshold.</p>
+          <div className="form-grid-2">
+            <div className="field"><label>Eligibility threshold (lifetime LKR)</label><input className="input" type="number" min="0" value={s["membership.premium_threshold_lkr"] || 0} onChange={e => setNum("membership.premium_threshold_lkr", e.target.value)} /></div>
+            <div className="field"><label>Premium discount (%)</label><input className="input" type="number" min="0" max="100" value={s["membership.premium_discount_pct"] || 0} onChange={e => setNum("membership.premium_discount_pct", e.target.value)} /></div>
+          </div>
+        </section>
+
+        <section className="form-section">
           <h3>SEO &amp; <em>sharing</em></h3>
           <p style={{color:"var(--ink-3)",fontSize:12,margin:"0 0 14px"}}>What search engines and social previews show for your homepage and pages without their own meta. Per-page meta (e.g. on a product or journal post) overrides these.</p>
 

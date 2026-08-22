@@ -82,9 +82,13 @@ function Checkout() {
   const stdRate  = Number(settings["shipping.std_lkr"]       ?? 850);
   const expRate  = Number(settings["shipping.express_lkr"]   ?? 1500);
   const codFeeR  = Number(settings["shipping.cod_fee_lkr"]   ?? 200);
-  const shipping = form.delivery === "express" ? expRate : (sub >= freeOver ? 0 : stdRate);
-  const codFee   = form.payment === "cod" ? codFeeR : 0;
-  const total    = sub + shipping + codFee;
+  // "The Key" premium perks: free delivery (waives shipping + COD fee) + standing discount.
+  const isPremium = !!(me && me.tier === "premium");
+  const discountPct = Number(settings["membership.premium_discount_pct"]) || 0;
+  const discount = isPremium ? Math.round(sub * discountPct / 100) : 0;
+  const shipping = isPremium ? 0 : (form.delivery === "express" ? expRate : (sub >= freeOver ? 0 : stdRate));
+  const codFee   = isPremium ? 0 : (form.payment === "cod" ? codFeeR : 0);
+  const total    = sub - discount + shipping + codFee;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -257,7 +261,8 @@ function Checkout() {
               );
             })}
             <div className="row"><span>Subtotal</span><b>{window.fmtLKR(sub)}</b></div>
-            <div className="row"><span>Delivery</span><b>{shipping === 0 ? "Free" : window.fmtLKR(shipping)}</b></div>
+            {isPremium && discount > 0 && <div className="row"><span>The Key · {discountPct}% off</span><b style={{color:"var(--teal)"}}>−{window.fmtLKR(discount)}</b></div>}
+            <div className="row"><span>Delivery{isPremium ? " · The Key" : ""}</span><b>{shipping === 0 ? "Free" : window.fmtLKR(shipping)}</b></div>
             {codFee > 0 && <div className="row"><span>COD fee</span><b>{window.fmtLKR(codFee)}</b></div>}
             <div className="row grand"><span>Total</span><b>{window.fmtLKR(total)}</b></div>
             <div className="cart-note">By placing this order you agree to our delivery &amp; return policy.</div>
