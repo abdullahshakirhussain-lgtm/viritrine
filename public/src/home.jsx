@@ -349,8 +349,11 @@ function Home() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 28px", justifyContent: "space-between", fontFamily: V.mono, fontSize: 9, letterSpacing: "0.12em", color: V.muted, marginTop: "clamp(30px,4vw,54px)", borderTop: "1px solid " + V.ruleSoft, paddingTop: 12 }}>
           <span>© {new Date().getFullYear()} VITRINE (PVT) LTD</span><span>OPENED AND TESTED IN COLOMBO</span>
         </div>
-        <div style={{ height: "clamp(56px,9vw,128px)", overflow: "hidden", marginTop: "clamp(14px,2vw,26px)" }}>
-          <div style={{ fontFamily: V.display, fontWeight: 800, fontSize: "clamp(88px,21vw,300px)", lineHeight: 0.72, letterSpacing: "-0.045em", color: V.ink }}>VITRINE</div>
+        {/* Giant wordmark. overflow:hidden guards horizontal bleed on narrow
+            screens; line-height ~0.86 keeps the full caps visible (no fixed-height
+            container, which used to guillotine the letters at wide viewports). */}
+        <div style={{ overflow: "hidden", marginTop: "clamp(14px,2vw,26px)" }}>
+          <div style={{ fontFamily: V.display, fontWeight: 800, fontSize: "clamp(88px,21vw,300px)", lineHeight: 0.86, letterSpacing: "-0.045em", color: V.ink }}>VITRINE</div>
         </div>
       </footer>
 
