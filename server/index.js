@@ -211,9 +211,29 @@ const hydrateProduct = (row) => {
     metaDesc: row.meta_desc || null,
     stock: row.stock,
     image: row.image || null,
+    membersOnly: !!row.members_only,
+    earlyAccessUntil: row.early_access_until || null,
     concerns,
     notes,
   };
+};
+
+// ── The Key: product gating ────────────────────────────────
+// A product is "reserved" for premium members when it's members-only, or still
+// inside its early-access window. Premium members (and admins) see everything.
+const nowSec = () => Math.floor(Date.now() / 1000);
+const isReserved = (p) =>
+  !!(p && (p.membersOnly || (p.earlyAccessUntil && nowSec() < p.earlyAccessUntil)));
+const canSeeGated = (req) => {
+  const u = readUser(req);
+  return !!(u && (u.is_admin || u.tier === "premium"));
+};
+// Drop reserved products the requester isn't allowed to see. `key` lets callers
+// filter arrays of raw slide/related rows that embed a hydrated product.
+const filterVisible = (rows, req, pick) => {
+  const privileged = canSeeGated(req);
+  if (privileged) return rows;
+  return rows.filter((r) => !isReserved(pick ? pick(r) : r));
 };
 
 const lineUnit = (p) => p.sale_price || p.price;
@@ -325,7 +345,7 @@ app.get("/api/announcements", (_req, res) => {
 });
 
 // Hero slides — joins to products so the client gets everything in one shot.
-app.get("/api/hero-slides", (_req, res) => {
+app.get("/api/hero-slides", (req, res) => {
   // LEFT JOIN so editorial slides (no product) still appear. A slide shows when
   // it's editorial (product_id NULL) or its product exists and is active.
   const rows = db.prepare(`
@@ -338,7 +358,7 @@ app.get("/api/hero-slides", (_req, res) => {
       AND (h.product_id IS NULL OR (p.id IS NOT NULL AND (p.is_active IS NULL OR p.is_active = 1)))
     ORDER BY h.sort, h.id
   `).all();
-  res.json(rows.map(r => {
+  const slides = rows.map(r => {
     const hasProduct = r.product_id != null && r.id != null;
     const base = hasProduct ? hydrateProduct(r) : {};
     return {
@@ -350,13 +370,15 @@ app.get("/api/hero-slides", (_req, res) => {
       customCta: r.custom_cta,
       customHref: r.custom_href,
     };
-  }));
+  });
+  // Hide reserved product-slides from non-members; editorial slides always show.
+  res.json(filterVisible(slides, req));
 });
 
 // Editorial picks — for the homepage's "Shop the Shelf" rail.
 // If no products are flagged editor's pick, fall back to the latest products so
 // admin-added items show up immediately without needing the flag.
-app.get("/api/editorial", (_req, res) => {
+app.get("/api/editorial", (req, res) => {
   let rows = db.prepare(`
     SELECT * FROM products
     WHERE editor_pick_sort IS NOT NULL
@@ -371,22 +393,24 @@ app.get("/api/editorial", (_req, res) => {
       LIMIT 8
     `).all();
   }
-  res.json(rows.map(p => ({
+  const picks = rows.map(p => ({
     ...hydrateProduct(p),
     editorTag: p.editor_tag || (p.is_new ? "New" : p.is_bestseller ? "Bestseller" : "Pick"),
-  })));
+  }));
+  res.json(filterVisible(picks, req));
 });
 
 // Latest active products — for the homepage "New Arrivals" rail.
 app.get("/api/products/new-arrivals", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || "8", 10), 50);
+  // Over-fetch a little so gating doesn't shrink the row below `limit`.
   const rows = db.prepare(`
     SELECT * FROM products
     WHERE (is_active IS NULL OR is_active = 1)
     ORDER BY created_at DESC, id DESC
     LIMIT ?
-  `).all(limit);
-  res.json(rows.map(hydrateProduct));
+  `).all(limit * 2);
+  res.json(filterVisible(rows.map(hydrateProduct), req).slice(0, limit));
 });
 
 // Journal — published posts, latest first by published_at.
@@ -460,17 +484,22 @@ app.get("/api/products", (req, res) => {
   sql += " LIMIT ? OFFSET ?"; params.push(lim, off);
 
   const rows = db.prepare(sql).all(...params);
-  res.json(rows.map(hydrateProduct));
+  res.json(filterVisible(rows.map(hydrateProduct), req));
 });
 
 app.get("/api/products/:id", (req, res) => {
   const p = productById(req.params.id);
   if (!p) return res.status(404).json({ error: "Not found" });
+  // Reserved products: non-members get a "locked" response so the PDP can show
+  // the members-only state (and a link to The Key) instead of the piece itself.
+  if (isReserved(p) && !canSeeGated(req)) {
+    return res.status(403).json({ error: "Members only", locked: true, reason: p.membersOnly ? "members_only" : "early_access", earlyAccessUntil: p.earlyAccessUntil || null, brandName: p.brandName });
+  }
   logEvent(sidOf(req, res), "product_view", { productId: p.id }); // fire-and-forget
   const related = db.prepare(
     "SELECT * FROM products WHERE category=? AND id<>? ORDER BY is_bestseller DESC LIMIT 6"
   ).all(p.category, p.id).map(hydrateProduct);
-  res.json({ product: p, related });
+  res.json({ product: p, related: filterVisible(related, req) });
 });
 
 app.get("/api/search", (req, res) => {
@@ -484,7 +513,7 @@ app.get("/api/search", (req, res) => {
   `).all(like, like, like, like);
   // Log only meaningful queries (2+ chars) to keep type-ahead noise down.
   if (q.length >= 2) logEvent(sidOf(req, res), "search", { meta: { q, results: rows.length } });
-  res.json(rows.map(hydrateProduct));
+  res.json(filterVisible(rows.map(hydrateProduct), req));
 });
 
 /* ── auth ────────────────────────────────────────────── */
@@ -696,6 +725,10 @@ app.post("/api/cart/items", (req, res) => {
   if (!product) return res.status(404).json({ error: "Product not found" });
   const token = cartTokenOf(req, res);
   const u = readUser(req);
+  // The Key: a non-member can't add a reserved (members-only / early-access) piece.
+  if (isReserved(product) && !(u && (u.is_admin || u.tier === "premium"))) {
+    return res.status(403).json({ error: "This piece is reserved for The Key members.", locked: true });
+  }
   const cart = findOrCreateCart(token, u?.id);
   const size = parsed.data.size || product.size;
   const existing = db.prepare("SELECT * FROM cart_items WHERE cart_id=? AND product_id=? AND size IS ?").get(cart.id, product.id, size);
@@ -823,9 +856,14 @@ app.post("/api/orders", (req, res) => {
     WHERE ci.cart_id=?
   `).all(cart.id);
   if (lines.length === 0) return res.status(400).json({ error: "Cart is empty" });
-  const subtotal = lines.reduce((s, l) => s + lineUnit(l) * l.qty, 0);
   // "The Key" premium perks: free delivery + standing discount (server-authoritative).
   const isPremium = !!(u && u.tier === "premium");
+  // Gate: a non-member can't check out a reserved (members-only / early-access) piece.
+  if (!(isPremium || (u && u.is_admin))) {
+    const reservedLine = lines.find(l => l.members_only || (l.early_access_until && Math.floor(Date.now() / 1000) < l.early_access_until));
+    if (reservedLine) return res.status(403).json({ error: `"${reservedLine.name}" is reserved for The Key members. Remove it to continue.`, locked: true, productId: reservedLine.id });
+  }
+  const subtotal = lines.reduce((s, l) => s + lineUnit(l) * l.qty, 0);
   const cfg = membershipCfg();
   const discount = isPremium ? Math.round(subtotal * (cfg.discountPct || 0) / 100) : 0;
   const shipping = isPremium ? 0 : computeShipping(subtotal, data.delivery, data.payment);
@@ -1184,6 +1222,8 @@ const productSchema = z.object({
   editor_tag:       z.string().max(40).nullable().optional(),
   meta_title:   z.string().max(200).nullable().optional(),
   meta_desc:    z.string().max(400).nullable().optional(),
+  members_only:       z.boolean().optional(),
+  early_access_until: z.number().int().nullable().optional(),
   concerns:     z.array(z.string()).optional(),
   notes:        z.array(z.string()).optional(),
 });
@@ -1205,14 +1245,15 @@ app.post("/api/admin/products", requireAuth, requireAdmin, (req, res) => {
   db.transaction(() => {
     db.prepare(`
       INSERT INTO products
-        (id,brand_key,name,italic,category,sub,size,variant,liquid,liquid_top,copy,price,sale_price,off_pct,is_new,is_bestseller,is_active,stock,editor_pick_sort,editor_tag,meta_title,meta_desc)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (id,brand_key,name,italic,category,sub,size,variant,liquid,liquid_top,copy,price,sale_price,off_pct,is_new,is_bestseller,is_active,stock,editor_pick_sort,editor_tag,meta_title,meta_desc,members_only,early_access_until)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       d.id, d.brand_key, d.name, d.italic || null, d.category, d.sub || null, d.size || null,
       d.variant || null, d.liquid || null, d.liquid_top || null, d.copy || null,
       d.price, d.sale_price || null, d.off_pct || null,
       d.is_new ? 1 : 0, d.is_bestseller ? 1 : 0, d.is_active === false ? 0 : 1, d.stock || 0,
       d.editor_pick_sort ?? null, d.editor_tag || null, d.meta_title || null, d.meta_desc || null,
+      d.members_only ? 1 : 0, d.early_access_until ?? null,
     );
     writeConcernsNotes(d.id, d.concerns, d.notes);
   })();
@@ -1250,6 +1291,8 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
     editor_tag:       req.body.editor_tag       !== undefined ? req.body.editor_tag       : cur.editor_tag,
     meta_title:       req.body.meta_title       !== undefined ? req.body.meta_title       : cur.meta_title,
     meta_desc:        req.body.meta_desc        !== undefined ? req.body.meta_desc        : cur.meta_desc,
+    members_only:       req.body.members_only       ?? !!cur.members_only,
+    early_access_until: req.body.early_access_until !== undefined ? req.body.early_access_until : cur.early_access_until,
     concerns:         req.body.concerns         ?? curConcerns,
     notes:            req.body.notes            ?? curNotes,
   };
@@ -1262,7 +1305,8 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
         brand_key=?, name=?, italic=?, category=?, sub=?, size=?, variant=?,
         liquid=?, liquid_top=?, copy=?, price=?, sale_price=?, off_pct=?,
         is_new=?, is_bestseller=?, is_active=?, stock=?,
-        editor_pick_sort=?, editor_tag=?, meta_title=?, meta_desc=?
+        editor_pick_sort=?, editor_tag=?, meta_title=?, meta_desc=?,
+        members_only=?, early_access_until=?
       WHERE id=?
     `).run(
       d.brand_key, d.name, d.italic || null, d.category, d.sub || null, d.size || null,
@@ -1270,6 +1314,7 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
       d.price, d.sale_price || null, d.off_pct || null,
       d.is_new ? 1 : 0, d.is_bestseller ? 1 : 0, d.is_active === false ? 0 : 1, d.stock || 0,
       d.editor_pick_sort ?? null, d.editor_tag || null, d.meta_title || null, d.meta_desc || null,
+      d.members_only ? 1 : 0, d.early_access_until ?? null,
       id,
     );
     writeConcernsNotes(id, d.concerns, d.notes);

@@ -32,6 +32,7 @@ const BLANK = {
   image: null,
   editor_pick_sort: null, editor_tag: "",
   meta_title: "", meta_desc: "",
+  members_only: false, early_access_date: "",
 };
 
 function ProductEdit() {
@@ -78,6 +79,8 @@ function ProductEdit() {
           editor_pick_sort: p.editorPickSort,
           editor_tag: p.editorTag || "",
           meta_title: p.metaTitle || "", meta_desc: p.metaDesc || "",
+          members_only: !!p.membersOnly,
+          early_access_date: p.earlyAccessUntil ? new Date(p.earlyAccessUntil * 1000).toISOString().slice(0, 10) : "",
         });
       }).catch(e => setErr(e.message));
     }
@@ -95,6 +98,12 @@ function ProductEdit() {
       body.stock = Number(body.stock) || 0;
       body.editor_pick_sort = body.editor_pick_sort === "" || body.editor_pick_sort == null ? null : Number(body.editor_pick_sort);
       if (!body.editor_tag) body.editor_tag = null;
+      // The Key: convert the date input to an epoch-second cutoff (end of that day).
+      body.members_only = !!body.members_only;
+      body.early_access_until = body.early_access_date
+        ? Math.floor(new Date(body.early_access_date + "T23:59:59").getTime() / 1000)
+        : null;
+      delete body.early_access_date;
       if (editingId) {
         await window.api.patch("/api/admin/products/" + encodeURIComponent(editingId), body);
       } else {
@@ -274,6 +283,23 @@ function ProductEdit() {
                 <div className="field"><label>Tag (shown on the tile)</label>
                   <input className="input" value={form.editor_tag || ""} onChange={e => set("editor_tag", e.target.value)} placeholder="e.g. New / Ceylon / Iconic" />
                 </div>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3>The <em>Key</em> — access</h3>
+              <p style={{marginTop:-6,marginBottom:14,color:"var(--ink-3)",fontSize:13,lineHeight:1.5}}>
+                Reserve this piece for premium (The Key) members. Members and admins
+                always see it; everyone else won't find it in the shop, can't open its
+                page, and can't add it to a bag.
+              </p>
+              <label className="toggle" style={{marginBottom:14}}>
+                <input type="checkbox" checked={form.members_only} onChange={e => set("members_only", e.target.checked)} /> Members only (always reserved)
+              </label>
+              <div className="field">
+                <label>Early access until <span style={{color:"var(--ink-3)"}}>(members see it now; everyone from this date)</span></label>
+                <input className="input" type="date" value={form.early_access_date || ""} onChange={e => set("early_access_date", e.target.value)} style={{maxWidth:220}} disabled={form.members_only} />
+                {form.members_only && <div style={{fontSize:12,color:"var(--ink-3)",marginTop:6}}>Ignored while “members only” is on.</div>}
               </div>
             </section>
 

@@ -343,6 +343,9 @@ ensureColumn("products", "editor_pick_sort", "editor_pick_sort INTEGER");
 ensureColumn("products", "editor_tag",       "editor_tag TEXT");
 ensureColumn("products", "meta_title",        "meta_title TEXT");   // AI-drafted SEO <title>
 ensureColumn("products", "meta_desc",         "meta_desc TEXT");    // AI-drafted SEO description
+// The Key (premium) product gating:
+ensureColumn("products", "members_only",       "members_only INTEGER DEFAULT 0");  // 1 = premium members only, always
+ensureColumn("products", "early_access_until", "early_access_until INTEGER");       // epoch s; premium-only until then, public after
 ensureColumn("brands",   "image",            "image TEXT");
 ensureColumn("users",    "tier",             "tier TEXT DEFAULT 'standard'"); // standard | premium
 ensureColumn("users",    "tier_since",        "tier_since INTEGER");

@@ -164,6 +164,7 @@ function PDP() {
   const id = getProductId();
   const [data, setData] = React.useState(null);
   const [error, setError] = React.useState(null);
+  const [locked, setLocked] = React.useState(null);
   const [qty, setQty] = React.useState(1);
   const [added, setAdded] = React.useState(false);
   const [openPanel, setOpenPanel] = React.useState(-1);
@@ -178,7 +179,10 @@ function PDP() {
 
   React.useEffect(() => {
     if (!id) { setError("No product selected."); return; }
-    window.api.get("/api/products/" + encodeURIComponent(id)).then(setData).catch(e => setError(e.message || "Product not found"));
+    window.api.get("/api/products/" + encodeURIComponent(id)).then(setData).catch(e => {
+      if (e.status === 403 && e.data && e.data.locked) setLocked(e.data);
+      else setError(e.message || "Product not found");
+    });
     window.api.get("/api/settings").then(s => { const f = Number(s["shipping.free_over_lkr"]); if (f) setFreeOver(f); }).catch(() => {});
     loadBag();
     const onCart = () => loadBag();
@@ -210,6 +214,31 @@ function PDP() {
   };
 
   const mono = { fontFamily: V.mono };
+
+  if (locked) {
+    const earlyDate = locked.earlyAccessUntil ? new Date(locked.earlyAccessUntil * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : null;
+    const isEarly = locked.reason === "early_access" && earlyDate;
+    return (
+      <div className="po-root" style={{ fontFamily: V.body, background: V.paper, minHeight: "100vh" }}>
+        <Header count={bag.count} bagRef={bagRef} onBag={() => setBagOpen(true)} />
+        <div style={{ padding: "clamp(60px,12vw,140px) " + PAD, maxWidth: 620, margin: "0 auto", textAlign: "center" }}>
+          <div style={{ ...mono, fontSize: 11, letterSpacing: "0.18em", color: V.wine }}>THE KEY · BY INVITATION</div>
+          <h1 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(30px,4.4vw,54px)", letterSpacing: "-0.02em", color: V.ink, margin: "16px 0 18px", lineHeight: 1.02 }}>
+            {isEarly ? "Members have this first." : "Reserved for members."}
+          </h1>
+          <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: 18, lineHeight: 1.5, color: "#33332E", marginBottom: 30 }}>
+            {isEarly
+              ? <>This piece is open to The Key members until it goes on general sale on <b>{earlyDate}</b>. Members shop it now.</>
+              : <>This {locked.brandName ? locked.brandName + " " : ""}piece is kept for The Key — our members-only tier. It won’t appear in the shop unless you’re a member.</>}
+          </p>
+          <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
+            <a href="key.html" style={{ ...mono, fontSize: 12, letterSpacing: "0.14em", background: V.ink, color: V.paper, padding: "15px 26px" }}>ABOUT THE KEY →</a>
+            <a href="Shop.html" style={{ ...mono, fontSize: 12, letterSpacing: "0.14em", borderBottom: "1px solid " + V.ink, padding: "15px 4px" }}>BACK TO SHOP</a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
