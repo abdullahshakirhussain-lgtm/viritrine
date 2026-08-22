@@ -827,6 +827,84 @@ app.post("/api/membership/redeem", tightLimit, requireAuth, (req, res) => {
   res.json({ ok: true, tier: "premium" });
 });
 
+/* ── The Back Room — premium members-only appointments ─── */
+// Access is gated to premium (The Key) members; non-members get 403 {locked} so
+// the client can show the members-only state, exactly like reserved products.
+const requirePremium = (req, res) => {
+  const u = req.user;
+  if (u && (u.is_admin || u.tier === "premium")) return true;
+  res.status(403).json({ error: "The Back Room is for The Key members.", locked: true });
+  return false;
+};
+const appointmentSchema = z.object({
+  slot:         z.string().max(120).optional(),
+  topic:        z.string().max(600).optional(),
+  contact_pref: z.enum(["whatsapp", "phone", "email"]).optional(),
+  contact:      z.string().max(120).optional(),
+  member_note:  z.string().max(600).optional(),
+});
+
+// Member: request an appointment.
+app.post("/api/appointments", tightLimit, requireAuth, (req, res) => {
+  if (!requirePremium(req, res)) return;
+  const parsed = appointmentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+  const d = parsed.data;
+  // Guard against pile-ups: at most a few open requests per member.
+  const open = db.prepare("SELECT COUNT(*) c FROM appointments WHERE user_id=? AND status IN ('requested','confirmed')").get(req.user.id).c;
+  if (open >= 3) return res.status(409).json({ error: "You already have appointments pending. We'll be in touch shortly." });
+  const info = db.prepare(`INSERT INTO appointments (user_id, slot, topic, contact_pref, contact, member_note)
+    VALUES (?,?,?,?,?,?)`).run(
+    req.user.id, d.slot || null, d.topic || null, d.contact_pref || null, d.contact || null, d.member_note || null,
+  );
+  res.json({ ok: true, id: info.lastInsertRowid });
+});
+
+// Member: their own appointments.
+app.get("/api/appointments", requireAuth, (req, res) => {
+  if (!requirePremium(req, res)) return;
+  res.json(db.prepare("SELECT id, status, slot, topic, contact_pref, contact, member_note, admin_note, scheduled_at, created_at FROM appointments WHERE user_id=? ORDER BY created_at DESC").all(req.user.id));
+});
+
+// Member: cancel their own pending appointment.
+app.patch("/api/appointments/:id", requireAuth, (req, res) => {
+  const appt = db.prepare("SELECT * FROM appointments WHERE id=?").get(req.params.id);
+  if (!appt || appt.user_id !== req.user.id) return res.status(404).json({ error: "Not found" });
+  if (String(req.body?.status) !== "cancelled") return res.status(400).json({ error: "You can only cancel." });
+  db.prepare("UPDATE appointments SET status='cancelled' WHERE id=?").run(appt.id);
+  res.json({ ok: true });
+});
+
+// Admin: all appointments with member context.
+app.get("/api/admin/appointments", requireAuth, requireAdmin, (_req, res) => {
+  const rows = db.prepare(`
+    SELECT a.*, u.first_name, u.last_name, u.email, u.phone, u.tier
+    FROM appointments a LEFT JOIN users u ON u.id = a.user_id
+    ORDER BY CASE a.status WHEN 'requested' THEN 0 WHEN 'confirmed' THEN 1 WHEN 'completed' THEN 2 ELSE 3 END, a.created_at DESC
+  `).all();
+  res.json(rows.map(r => ({ ...r, lifetime_spend: lifetimeSpend(r.user_id) })));
+});
+
+// Admin: update status / schedule / note.
+app.patch("/api/admin/appointments/:id", requireAuth, requireAdmin, (req, res) => {
+  const cur = db.prepare("SELECT * FROM appointments WHERE id=?").get(req.params.id);
+  if (!cur) return res.status(404).json({ error: "Not found" });
+  const b = req.body || {};
+  const status = ["requested", "confirmed", "completed", "cancelled"].includes(b.status) ? b.status : cur.status;
+  db.prepare("UPDATE appointments SET status=?, admin_note=?, scheduled_at=? WHERE id=?").run(
+    status,
+    b.admin_note !== undefined ? (b.admin_note || null) : cur.admin_note,
+    b.scheduled_at !== undefined ? (b.scheduled_at || null) : cur.scheduled_at,
+    cur.id,
+  );
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/appointments/:id", requireAuth, requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM appointments WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
 /* ── checkout / orders ───────────────────────────────── */
 const orderSchema = z.object({
   email:    z.string().email(),

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Back Room — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+// The Back Room — appointment requests from Key members. Confirm a time, leave a
+// note the member sees, mark completed, or remove. Reads /api/admin/appointments.
+const money = (n) => window.adminFmtMoney(n);
+const fmtDate = (s) => s ? new Date(s * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+const toLocalInput = (s) => {
+  if (!s) return "";
+  const d = new Date(s * 1000); const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+};
+const STATUS = ["requested", "confirmed", "completed", "cancelled"];
+
+function Appointments() {
+  const [rows, setRows] = React.useState(null);
+  const load = () => window.api.get("/api/admin/appointments").then(setRows);
+  React.useEffect(() => { load(); }, []);
+
+  const save = async (r, patch) => { await window.api.patch("/api/admin/appointments/" + r.id, patch); load(); };
+  const del = async (r) => { if (!adminConfirm("Remove this appointment?")) return; await window.api.del("/api/admin/appointments/" + r.id); load(); };
+
+  const open = rows ? rows.filter(r => r.status === "requested" || r.status === "confirmed").length : 0;
+
+  return (
+    <AdminShell active="backroom" eyebrow="The Key · by appointment" title={<>The Back <em>Room</em></>}>
+      {rows === null ? <p>Loading…</p> :
+       rows.length === 0 ? <div className="empty-admin"><h3>No appointments yet</h3><p>Requests from Key members will appear here.</p></div> :
+        <>
+          <div className="stat-grid" style={{ marginBottom: 20 }}>
+            <div className="stat-card"><div className="l">Open requests</div><div className="v">{open}</div></div>
+            <div className="stat-card"><div className="l">Total</div><div className="v">{rows.length}</div></div>
+          </div>
+          <div className="dt-wrap">
+            <table className="dt">
+              <thead><tr><th>Member</th><th>Wants</th><th>Reach</th><th>Status</th><th>Confirm time</th><th>Note to member</th><th></th></tr></thead>
+              <tbody>
+                {rows.map(r => {
+                  const name = [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email || ("#" + r.user_id);
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        <b>{name}</b>
+                        {r.tier === "premium" && <span style={{ marginLeft: 6, fontSize: 10, letterSpacing: "0.1em", color: "var(--gold)" }}>◆ KEY</span>}
+                        <br /><span style={{ fontSize: 11, color: "var(--ink-3)" }}>{money(r.lifetime_spend)} lifetime</span>
+                        <br /><span style={{ fontSize: 11, color: "var(--ink-3)" }}>{r.slot || "—"} · {fmtDate(r.created_at)}</span>
+                      </td>
+                      <td style={{ maxWidth: 240 }}>{r.topic || <span style={{ color: "var(--ink-3)" }}>—</span>}</td>
+                      <td style={{ fontSize: 12 }}>{r.contact_pref || "—"}<br /><span style={{ color: "var(--ink-3)" }}>{r.contact || (r.phone || r.email || "")}</span></td>
+                      <td>
+                        <select className="input" value={r.status} onChange={e => save(r, { status: e.target.value })} style={{ minWidth: 120 }}>
+                          {STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <input className="input" type="datetime-local" defaultValue={toLocalInput(r.scheduled_at)}
+                          onBlur={e => {
+                            const v = e.target.value ? Math.floor(new Date(e.target.value).getTime() / 1000) : null;
+                            if (v !== r.scheduled_at) save(r, { scheduled_at: v });
+                          }} style={{ minWidth: 190 }} />
+                      </td>
+                      <td><input className="input" defaultValue={r.admin_note || ""} placeholder="Shown to the member" onBlur={e => e.target.value !== (r.admin_note || "") && save(r, { admin_note: e.target.value || null })} style={{ minWidth: 200 }} /></td>
+                      <td className="row-actions"><button className="danger" onClick={() => del(r)}>Remove</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>}
+    </AdminShell>
+  );
+}
+
+mountAdmin(Appointments);
+</script>
+</body>
+</html>

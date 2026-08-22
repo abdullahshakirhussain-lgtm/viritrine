@@ -308,6 +308,21 @@ CREATE TABLE IF NOT EXISTS membership_invites (
   created_at  INTEGER DEFAULT (strftime('%s','now'))
 );
 
+-- The Back Room — private appointments for The Key (premium) members.
+CREATE TABLE IF NOT EXISTS appointments (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  status       TEXT NOT NULL DEFAULT 'requested',  -- requested | confirmed | completed | cancelled
+  slot         TEXT,                                -- member's preferred window, free text
+  topic        TEXT,                                -- what they'd like help with
+  contact_pref TEXT,                                -- whatsapp | phone | email
+  contact      TEXT,                                -- their number / handle
+  member_note  TEXT,
+  admin_note   TEXT,                                -- owner's private note
+  scheduled_at INTEGER,                             -- confirmed time (unix seconds)
+  created_at   INTEGER DEFAULT (strftime('%s','now'))
+);
+
 CREATE TABLE IF NOT EXISTS analytics_events (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT NOT NULL,

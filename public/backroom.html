@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<base href="/" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Back Room — VITRINE</title>
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,200..500;1,6..72,200..400&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/motion.css" />
+<style>
+  html, body { margin: 0; }
+  body { background: #FFFFFF; color: #101010; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  * { box-sizing: border-box; }
+  .br-root a { color: #101010; text-decoration: none; }
+  .br-root a.accent:hover { color: #5A1430; }
+  .br-root ::selection { background: #5A1430; color: #fff; }
+  .br-input { width: 100%; font-family: Newsreader, Georgia, serif; font-size: 16px; color: #101010; background: #FFFFFF; border: 1px solid #DCDCD6; padding: 12px 14px; outline: none; }
+  .br-input:focus { border-color: #5A1430; }
+  .br-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #6E6E68; display: block; margin-bottom: 7px; }
+  .br-btn { font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.14em; background: #101010; color: #fff; border: none; padding: 15px 26px; cursor: pointer; transition: background .3s ease; }
+  .br-btn:hover { background: #5A1430; }
+  .br-btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .br-pill { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; padding: 4px 9px; border: 1px solid #DCDCD6; color: #6E6E68; }
+  .br-pill.requested { border-color: #5A1430; color: #5A1430; }
+  .br-pill.confirmed { border-color: #101010; color: #101010; background: #101010; color: #fff; }
+  .br-pill.completed { color: #9A9A93; }
+  .br-pill.cancelled { color: #B9B4AB; text-decoration: line-through; }
+</style>
+</head>
+<body data-vit-cursor>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+
+<script type="text/babel">
+const V = {
+  paper: "#FFFFFF", ink: "#101010", wine: "#5A1430", glass: "#EEF2F1",
+  rule: "#DCDCD6", ruleSoft: "#EFEFEA", muted: "#6E6E68",
+  display: "Archivo, system-ui, sans-serif", body: "Newsreader, Georgia, serif",
+  mono: "'IBM Plex Mono', ui-monospace, monospace",
+};
+const PAD = "clamp(18px,4.2vw,64px)";
+const mono = { fontFamily: V.mono };
+const fmtWhen = (s) => s ? new Date(s * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+const SLOTS = ["Weekday morning", "Weekday evening", "Weekend", "As soon as possible", "I'll decide with you"];
+
+function Header() {
+  return (
+    <header style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(255,255,255,0.94)", backdropFilter: "blur(8px)", borderBottom: "1px solid " + V.ink, padding: "14px " + PAD, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
+      <a href="/" style={{ fontFamily: V.display, fontWeight: 800, fontSize: 20, letterSpacing: "0.01em" }}>VITRINE</a>
+      <span style={{ ...mono, fontSize: 10, letterSpacing: "0.2em", color: V.wine }}>THE BACK ROOM</span>
+      <a className="accent" href="account.html" style={{ ...mono, fontSize: 11, letterSpacing: "0.12em", borderBottom: "1px solid " + V.ink, paddingBottom: 2 }}>ACCOUNT</a>
+    </header>
+  );
+}
+
+function Locked({ signedIn }) {
+  return (
+    <div className="br-root" style={{ fontFamily: V.body, minHeight: "100vh" }}>
+      <Header />
+      <div style={{ padding: "clamp(60px,12vw,150px) " + PAD, maxWidth: 640, margin: "0 auto", textAlign: "center" }}>
+        <div style={{ ...mono, fontSize: 11, letterSpacing: "0.2em", color: V.wine }}>THE KEY · BY INVITATION</div>
+        <h1 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(32px,4.6vw,58px)", letterSpacing: "-0.025em", lineHeight: 1.0, margin: "16px 0 18px" }}>A room for members.</h1>
+        <p style={{ fontSize: 18, lineHeight: 1.55, color: "#33332E", marginBottom: 30, fontWeight: 300 }}>
+          The Back Room is a private appointment for holders of The Key — testers, full sizes, and an unhurried hour with the shop. It opens once you're a member.
+        </p>
+        <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
+          <a href="key.html" style={{ ...mono, fontSize: 12, letterSpacing: "0.14em", background: V.ink, color: "#fff", padding: "15px 26px" }}>ABOUT THE KEY →</a>
+          {!signedIn && <a href="login.html" className="accent" style={{ ...mono, fontSize: 12, letterSpacing: "0.14em", borderBottom: "1px solid " + V.ink, padding: "15px 4px" }}>SIGN IN</a>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BackRoom() {
+  const [me, setMe] = React.useState(undefined);       // undefined=loading, null=anon
+  const [appts, setAppts] = React.useState(null);
+  const [form, setForm] = React.useState({ slot: SLOTS[0], topic: "", contact_pref: "whatsapp", contact: "" });
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [sent, setSent] = React.useState(false);
+
+  const loadAppts = () => window.api.get("/api/appointments").then(setAppts).catch(() => setAppts([]));
+  React.useEffect(() => {
+    window.api.get("/api/auth/me").then(r => {
+      setMe(r.user || null);
+      if (r.user && (r.user.is_admin || r.user.tier === "premium")) loadAppts();
+    }).catch(() => setMe(null));
+  }, []);
+
+  if (me === undefined) return <div className="br-root" style={{ minHeight: "100vh" }}><Header /><p style={{ padding: PAD, fontFamily: V.mono, fontSize: 12, color: V.muted }}>Loading…</p></div>;
+  const premium = me && (me.is_admin || me.tier === "premium");
+  if (!premium) return <Locked signedIn={!!me} />;
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const submit = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      await window.api.post("/api/appointments", form);
+      setSent(true); setForm({ slot: SLOTS[0], topic: "", contact_pref: "whatsapp", contact: "" });
+      await loadAppts();
+      setTimeout(() => setSent(false), 4000);
+    } catch (e2) { setErr(e2.message || "Something went wrong."); }
+    setBusy(false);
+  };
+  const cancel = async (a) => {
+    await window.api.patch("/api/appointments/" + a.id, { status: "cancelled" }).catch(() => {});
+    loadAppts();
+  };
+
+  return (
+    <div className="br-root" style={{ fontFamily: V.body, minHeight: "100vh" }}>
+      <Header />
+      {/* intro */}
+      <section data-reveal style={{ padding: "clamp(44px,7vw,104px) " + PAD + " clamp(28px,4vw,52px)", borderBottom: "1px solid " + V.ink, maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ ...mono, fontSize: 11, letterSpacing: "0.2em", color: V.wine, marginBottom: 20 }}>YOU HOLD THE KEY</div>
+        <h1 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(38px,7vw,96px)", lineHeight: 0.9, letterSpacing: "-0.035em", margin: 0, textTransform: "uppercase" }}>The Back Room</h1>
+        <p style={{ fontSize: "clamp(16px,1.6vw,21px)", lineHeight: 1.5, fontWeight: 300, color: "#33332E", maxWidth: "50ch", margin: "clamp(20px,3vw,34px) 0 0" }}>
+          A private hour with the shop — testers pulled, full sizes opened, nothing rushed. Tell us when suits and what you're after; we'll come back to you to confirm the time and how we'll meet.
+        </p>
+      </section>
+
+      <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: "clamp(30px,5vw,72px)", padding: "clamp(36px,5vw,72px) " + PAD + " clamp(72px,10vw,140px)" }}>
+        {/* request form */}
+        <form onSubmit={submit} data-reveal style={{ flex: "1 1 360px", minWidth: "min(100%,320px)" }}>
+          <h2 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(20px,2.2vw,28px)", letterSpacing: "-0.02em", margin: "0 0 22px", textTransform: "uppercase" }}>Request an appointment</h2>
+          <div style={{ marginBottom: 18 }}>
+            <label className="br-label">When suits you</label>
+            <select className="br-input" value={form.slot} onChange={e => set("slot", e.target.value)}>
+              {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: 18 }}>
+            <label className="br-label">What are you after? <span style={{ textTransform: "none", letterSpacing: 0, color: "#B9B4AB" }}>(optional)</span></label>
+            <textarea className="br-input" style={{ minHeight: 96, resize: "vertical", fontFamily: V.body }} value={form.topic} onChange={e => set("topic", e.target.value)} placeholder="A fragrance for evenings; a full routine; a gift for someone…" />
+          </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 22 }}>
+            <div style={{ flex: "0 0 160px" }}>
+              <label className="br-label">Reach me by</label>
+              <select className="br-input" value={form.contact_pref} onChange={e => set("contact_pref", e.target.value)}>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="phone">Phone</option>
+                <option value="email">Email</option>
+              </select>
+            </div>
+            <div style={{ flex: "1 1 180px" }}>
+              <label className="br-label">Number / handle</label>
+              <input className="br-input" value={form.contact} onChange={e => set("contact", e.target.value)} placeholder={form.contact_pref === "email" ? "you@address" : "+94…"} />
+            </div>
+          </div>
+          {err && <div style={{ ...mono, fontSize: 11, color: V.wine, marginBottom: 14 }}>{err}</div>}
+          {sent && <div style={{ ...mono, fontSize: 11, letterSpacing: "0.1em", color: V.wine, marginBottom: 14 }}>REQUESTED — WE'LL BE IN TOUCH</div>}
+          <button className="br-btn" disabled={busy}>{busy ? "SENDING…" : "REQUEST THE ROOM →"}</button>
+        </form>
+
+        {/* history */}
+        <div data-reveal style={{ "--d": "120ms", flex: "1 1 320px", minWidth: "min(100%,300px)" }}>
+          <h2 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(20px,2.2vw,28px)", letterSpacing: "-0.02em", margin: "0 0 22px", textTransform: "uppercase" }}>Your appointments</h2>
+          {appts === null ? <p style={{ ...mono, fontSize: 12, color: V.muted }}>Loading…</p>
+            : appts.length === 0 ? <p style={{ fontSize: 16, fontWeight: 300, color: V.muted, lineHeight: 1.5 }}>No appointments yet. Request one and we'll confirm a time with you.</p>
+            : appts.map(a => (
+              <div key={a.id} style={{ borderTop: "1px solid " + V.rule, padding: "16px 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <span style={{ ...mono, fontSize: 11, letterSpacing: "0.08em", color: V.ink }}>{a.slot || "—"}</span>
+                  <span className={"br-pill " + a.status}>{a.status}</span>
+                </div>
+                {a.topic && <p style={{ fontSize: 15, fontWeight: 300, color: "#33332E", margin: "10px 0 0", lineHeight: 1.5 }}>{a.topic}</p>}
+                {a.scheduled_at && <div style={{ ...mono, fontSize: 11, color: V.wine, marginTop: 10 }}>CONFIRMED · {fmtWhen(a.scheduled_at)}</div>}
+                {a.admin_note && <div style={{ fontSize: 14, fontStyle: "italic", color: V.muted, marginTop: 8 }}>“{a.admin_note}”</div>}
+                {(a.status === "requested" || a.status === "confirmed") &&
+                  <button onClick={() => cancel(a)} style={{ ...mono, fontSize: 10, letterSpacing: "0.1em", background: "none", border: "none", color: V.muted, cursor: "pointer", padding: 0, marginTop: 12, borderBottom: "1px solid " + V.rule }}>CANCEL</button>}
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<BackRoom />);
+</script>
+<script type="module" src="src/motion.js"></script>
+</body>
+</html>

@@ -28,6 +28,7 @@ function AdminShell({ active, title, eyebrow, actions, children }) {
           <div className="sect">Shop</div>
           {link("admin-orders.html",       "Orders",        "orders")}
           {link("admin-members.html",      "Members",       "members")}
+          {link("admin-appointments.html", "Back Room",     "backroom")}
           {link("admin-messages.html",     "Messages",      "messages")}
           {link("admin-newsletter.html",   "Newsletter",    "newsletter")}
           <div className="sect">Settings</div>

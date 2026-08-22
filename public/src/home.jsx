@@ -292,10 +292,12 @@ function Home() {
             <a href="key.html" style={{ display: "inline-block", fontFamily: V.mono, fontSize: 11, letterSpacing: "0.14em", color: "#FFFFFF", borderBottom: "1px solid #FFFFFF", paddingBottom: 4, marginTop: "clamp(22px,3vw,36px)" }}>ABOUT MEMBERSHIP →</a>
           </div>
           <div data-reveal style={{ "--d": "140ms", flex: "1 1 280px", maxWidth: 460 }}>
-            {["Free delivery on every order", "A standing member's discount", "First refusal on new arrivals", "The back room by appointment"].map((t, i) => (
+            {[["Free delivery on every order"], ["A standing member's discount"], ["First refusal on new arrivals"], ["The back room by appointment", "backroom.html"]].map(([t, href], i) => (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "34px 1fr", gap: 16, borderTop: "1px solid #33332E", padding: "clamp(13px,1.6vw,18px) 0" }}>
                 <span style={{ fontFamily: V.mono, fontSize: 9, letterSpacing: "0.1em", color: "#7A756F", paddingTop: 3 }}>{String(i + 1).padStart(2, "0")}</span>
-                <span style={{ fontFamily: V.body, fontWeight: 300, fontSize: "clamp(15px,1.5vw,18px)", lineHeight: 1.35, color: "#F0F0EA" }}>{t}</span>
+                <span style={{ fontFamily: V.body, fontWeight: 300, fontSize: "clamp(15px,1.5vw,18px)", lineHeight: 1.35, color: "#F0F0EA" }}>
+                  {href ? <a href={href} style={{ color: "#F0F0EA", borderBottom: "1px solid #555049" }}>{t} →</a> : t}
+                </span>
               </div>
             ))}
           </div>
