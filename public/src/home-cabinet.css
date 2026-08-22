@@ -42,3 +42,4 @@ body { background: #FFFFFF; color: #101010; -webkit-font-smoothing: antialiased;
 @media (prefers-reduced-motion: reduce) {
   .vit-root *, .vit-root *::before, .vit-root *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+/* Motion (reveal / entrance / cursor / parallax) lives in the shared src/motion.css. */

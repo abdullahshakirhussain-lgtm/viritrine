@@ -10,13 +10,14 @@
 <!-- Unified with the homepage — "The Cabinet": Archivo + Newsreader + IBM Plex Mono -->
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,200..500;1,6..72,200..400&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="src/product-po.css" />
+<link rel="stylesheet" href="src/motion.css" />
 <style>
   html, body { margin: 0; }
   body { background: #FFFFFF; color: #101010; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   * { box-sizing: border-box; }
 </style>
 </head>
-<body>
+<body data-vit-cursor>
 <div id="root"></div>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
@@ -344,7 +345,7 @@ function PDP() {
           </div>
           <div style={{ ...mono, fontSize: 11, letterSpacing: "0.1em", color: V.orange, marginTop: 14, minHeight: 16 }}>{stockNote}</div>
 
-          <div style={{ marginTop: "clamp(28px,3.6vw,46px)" }}>
+          <div data-reveal style={{ marginTop: "clamp(28px,3.6vw,46px)" }}>
             {panels.map((s, i) => (
               <div key={i} style={{ borderTop: "1px solid " + V.rule }}>
                 <button className="po-hover" onClick={() => setOpenPanel(openPanel === i ? -1 : i)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", padding: "16px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, ...mono, fontSize: 12, letterSpacing: "0.12em", color: V.ink, textAlign: "left" }}>
@@ -360,8 +361,8 @@ function PDP() {
       {/* the declaration */}
       {p.copy && (
         <section style={{ display: "flex", flexWrap: "wrap", gap: "clamp(28px,4vw,72px)", padding: "clamp(48px,7vw,104px) " + PAD, borderBottom: "1px solid " + V.mist }}>
-          <div style={{ flex: "0 0 auto", ...mono, fontSize: 11, letterSpacing: "0.14em", color: V.teal, paddingTop: 6 }}>THE DECLARATION</div>
-          <div style={{ flex: "1 1 420px", minWidth: "min(100%,300px)" }}>
+          <div data-reveal style={{ flex: "0 0 auto", ...mono, fontSize: 11, letterSpacing: "0.14em", color: V.teal, paddingTop: 6 }}>THE DECLARATION</div>
+          <div data-reveal style={{ "--d": "90ms", flex: "1 1 420px", minWidth: "min(100%,300px)" }}>
             <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: "clamp(18px,1.8vw,23px)", lineHeight: 1.5, margin: 0, maxWidth: "58ch", color: "#22262A" }}>{p.copy}</p>
             {facts.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 1, background: V.rule, border: "1px solid " + V.rule, marginTop: "clamp(28px,3.4vw,44px)" }}>
@@ -388,7 +389,7 @@ function PDP() {
             {related.map((r) => {
               const rb = (typeof BRANDS !== "undefined" && BRANDS[r.brand]) || { name: r.brandName, loc: r.brandLoc };
               return (
-                <div key={r.id} className="po-row" style={{ display: "grid", gridTemplateColumns: "minmax(150px,2.4fr) minmax(90px,1.1fr) minmax(70px,0.7fr) 92px 70px", gap: "6px clamp(12px,2vw,28px)", alignItems: "center", borderBottom: "1px solid " + V.mist, padding: "clamp(15px,1.8vw,20px) 0" }}>
+                <div key={r.id} data-reveal className="po-row" style={{ display: "grid", gridTemplateColumns: "minmax(150px,2.4fr) minmax(90px,1.1fr) minmax(70px,0.7fr) 92px 70px", gap: "6px clamp(12px,2vw,28px)", alignItems: "center", borderBottom: "1px solid " + V.mist, padding: "clamp(15px,1.8vw,20px) 0" }}>
                   <a href={"/product/" + r.id} style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(15px,1.5vw,19px)", letterSpacing: "-0.015em" }}>{r.name} {r.italic}</a>
                   <span style={{ color: V.muted, letterSpacing: "0.1em" }}>{(rb.loc || "").toUpperCase()}</span>
                   <span style={{ color: V.muted }}>{r.size || r.sub}</span>
@@ -425,5 +426,6 @@ function PDP() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(<PDP />);
 </script>
+<script type="module" src="src/motion.js"></script>
 </body>
 </html>

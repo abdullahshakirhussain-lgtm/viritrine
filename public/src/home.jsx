@@ -123,7 +123,7 @@ function Home() {
   const slide = slides[idx % slides.length];
   const activeBrand = brands[ab] || {};
   const sectionHead = (title, meta, right) => (
-    <div style={{ borderTop: "1px solid " + V.ink, paddingTop: 10, display: "flex", flexWrap: "wrap", gap: "8px 28px", alignItems: "baseline", justifyContent: "space-between" }}>
+    <div data-reveal style={{ borderTop: "1px solid " + V.ink, paddingTop: 10, display: "flex", flexWrap: "wrap", gap: "8px 28px", alignItems: "baseline", justifyContent: "space-between" }}>
       <h2 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(24px,3.4vw,46px)", letterSpacing: "-0.025em", margin: 0, textTransform: "uppercase" }}>{title}</h2>
       {right || <span style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.12em", color: V.muted }}>{meta}</span>}
     </div>
@@ -191,7 +191,7 @@ function Home() {
       <section id="shelf" style={{ padding: "clamp(84px,11vw,168px) 0 clamp(28px,4vw,46px)" }}>
         <div style={{ padding: "0 " + PAD }}>{sectionHead("Shop", (shelf.length || 0) + " on the shelf")}</div>
         <div style={{ overflowX: "auto", padding: "clamp(30px,4vw,54px) " + PAD + " 4px", display: "flex", gap: "clamp(18px,2.4vw,34px)", alignItems: "flex-end" }}>
-          {shelf.map((p, i) => <div key={p.id} style={{ width: "clamp(200px,22vw,264px)", flex: "0 0 auto" }}><Tile p={p} onAdd={addToBag} h={"clamp(220px,26vw," + (240 + (i % 3) * 20) + "px)"} /></div>)}
+          {shelf.map((p, i) => <div key={p.id} data-reveal style={{ width: "clamp(200px,22vw,264px)", flex: "0 0 auto", "--d": (i * 55) + "ms" }}><Tile p={p} onAdd={addToBag} h={"clamp(220px,26vw," + (240 + (i % 3) * 20) + "px)"} /></div>)}
           <div style={{ flex: "0 0 auto", width: "clamp(160px,18vw,220px)", alignSelf: "flex-end", paddingBottom: 24 }}>
             <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: 16, lineHeight: 1.45, color: V.muted, margin: "0 0 14px" }}>Every brand here, we've tried.</p>
             <a href="#maisons" style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.13em", borderBottom: "1px solid " + V.ink, paddingBottom: 3 }}>SEE ALL BRANDS →</a>
@@ -201,12 +201,12 @@ function Home() {
 
       {/* free-delivery progress */}
       <section style={{ margin: "clamp(18px,3vw,40px) " + PAD + " 0", background: V.glass, padding: "clamp(26px,3.6vw,46px) clamp(20px,3vw,44px)", display: "flex", flexWrap: "wrap", gap: "clamp(24px,4vw,64px)", alignItems: "flex-end", justifyContent: "space-between" }}>
-        <div style={{ flex: "1 1 300px" }}>
+        <div data-reveal style={{ flex: "1 1 300px" }}>
           <div style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.16em", color: V.wine, marginBottom: 12 }}>ISLANDWIDE DELIVERY</div>
           <h3 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(20px,2.4vw,32px)", letterSpacing: "-0.02em", margin: "0 0 10px", textTransform: "uppercase" }}>Free over {money(freeOver)}</h3>
           <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: 16, lineHeight: 1.45, margin: 0, maxWidth: "44ch", color: "#33332E" }}>Everything on the shelf is opened and tested here before it ships. Delivery is free once your bag passes the line.</p>
         </div>
-        <div style={{ flex: "1 1 280px", maxWidth: 420 }}>
+        <div data-reveal style={{ "--d": "120ms", flex: "1 1 280px", maxWidth: 420 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontFamily: V.mono, fontSize: 10, letterSpacing: "0.1em", marginBottom: 8 }}>
             <span>{money(subtotal)}</span><span style={{ color: V.wine }}>{money(freeOver)}</span>
           </div>
@@ -222,7 +222,7 @@ function Home() {
         <section id="arrivals" style={{ padding: "clamp(84px,11vw,168px) " + PAD + " 0" }}>
           {sectionHead("New in", arrivals.length + " just landed")}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: "clamp(24px,3vw,44px) clamp(18px,2.4vw,34px)", marginTop: "clamp(34px,4vw,60px)" }}>
-            {arrivals.map((p, i) => <div key={p.id} style={{ marginTop: (i % 2) ? "clamp(20px,3vw,40px)" : 0 }}><Tile p={p} onAdd={addToBag} h="clamp(230px,24vw,320px)" /></div>)}
+            {arrivals.map((p, i) => <div key={p.id} data-reveal style={{ marginTop: (i % 2) ? "clamp(20px,3vw,40px)" : 0, "--d": (i * 55) + "ms" }}><Tile p={p} onAdd={addToBag} h="clamp(230px,24vw,320px)" /></div>)}
           </div>
         </section>
       )}
@@ -233,7 +233,7 @@ function Home() {
           {sectionHead("Last chance", sale.length + " pieces, no restock")}
           <div style={{ marginTop: "clamp(26px,3vw,40px)" }}>
             {sale.map((p) => (
-              <div key={p.id} className="vit-row" style={{ display: "grid", gridTemplateColumns: "minmax(140px,2.2fr) minmax(90px,1.2fr) minmax(74px,0.9fr) minmax(84px,0.9fr) 64px", gap: "4px clamp(10px,1.6vw,26px)", alignItems: "center", borderBottom: "1px solid " + V.ruleSoft, padding: "clamp(16px,1.8vw,22px) 0", fontFamily: V.mono, fontSize: 11 }}>
+              <div key={p.id} data-reveal className="vit-row" style={{ display: "grid", gridTemplateColumns: "minmax(140px,2.2fr) minmax(90px,1.2fr) minmax(74px,0.9fr) minmax(84px,0.9fr) 64px", gap: "4px clamp(10px,1.6vw,26px)", alignItems: "center", borderBottom: "1px solid " + V.ruleSoft, padding: "clamp(16px,1.8vw,22px) 0", fontFamily: V.mono, fontSize: 11 }}>
                 <a href={"/product/" + p.id} style={{ fontFamily: V.display, fontWeight: 600, fontSize: "clamp(14px,1.5vw,19px)", letterSpacing: "-0.015em" }}>{p.name}</a>
                 <span style={{ fontFamily: V.body, fontWeight: 300, fontStyle: "italic", fontSize: 14, color: "#4A4A43" }}>{p.brandName}</span>
                 <span style={{ color: V.muted, textDecoration: "line-through" }}>{money(p.price)}</span>
@@ -251,7 +251,7 @@ function Home() {
           {sectionHead("The brands", brands.length + " houses")}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", borderLeft: "1px solid " + V.ruleSoft, marginTop: "clamp(28px,3vw,44px)" }}>
             {brands.map((b, i) => (
-              <a key={b.key} href={"/brand/" + b.key} className="vit-brandcell" onMouseEnter={() => setAb(i)} onFocus={() => setAb(i)} style={{ borderRight: "1px solid " + V.ruleSoft, borderBottom: "1px solid " + V.ruleSoft, padding: "clamp(16px,2vw,26px) clamp(12px,1.6vw,20px)", minHeight: "clamp(120px,12vw,158px)", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 18 }}>
+              <a key={b.key} href={"/brand/" + b.key} data-reveal className="vit-brandcell" onMouseEnter={() => setAb(i)} onFocus={() => setAb(i)} style={{ "--d": (i * 40) + "ms", borderRight: "1px solid " + V.ruleSoft, borderBottom: "1px solid " + V.ruleSoft, padding: "clamp(16px,2vw,26px) clamp(12px,1.6vw,20px)", minHeight: "clamp(120px,12vw,158px)", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 18 }}>
                 <span style={{ fontFamily: V.display, fontWeight: 600, fontSize: "clamp(16px,1.8vw,23px)", lineHeight: 1.02, letterSpacing: "-0.022em" }}>{b.name}</span>
                 <span style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.12em", color: V.muted }}>{(b.loc || "").toUpperCase()}</span>
               </a>
@@ -270,7 +270,7 @@ function Home() {
           {sectionHead("Stories", null, <a href="journal.html" style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.13em", borderBottom: "1px solid " + V.ink, paddingBottom: 3 }}>ALL STORIES →</a>)}
           <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(24px,3vw,48px)", marginTop: "clamp(30px,4vw,52px)" }}>
             {journal.map((j, i) => (
-              <a key={j.id} href={"/journal/" + j.slug} style={{ flex: "1 1 280px", minWidth: "min(100%,260px)", display: "block" }}>
+              <a key={j.id} href={"/journal/" + j.slug} data-reveal style={{ "--d": (i * 80) + "ms", flex: "1 1 280px", minWidth: "min(100%,260px)", display: "block" }}>
                 <div style={{ position: "relative", background: "linear-gradient(112deg,#F6F7F7," + V.porcelain + " 60%,#FAFBFB)", height: "clamp(200px," + (240 + i * 10) + "px,280px)", borderTop: "1px solid " + V.ink }}>
                   {j.cover_image && <img src={j.cover_image} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
                 </div>
@@ -286,12 +286,12 @@ function Home() {
       {/* The Key — membership */}
       <section style={{ margin: "clamp(84px,11vw,168px) 0 0", background: V.ink, color: "#FFFFFF", padding: "clamp(48px,7vw,96px) " + PAD }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(28px,5vw,80px)", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <div style={{ flex: "1 1 320px" }}>
+          <div data-reveal style={{ flex: "1 1 320px" }}>
             <h2 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(24px,3.4vw,46px)", lineHeight: 0.94, letterSpacing: "-0.028em", margin: 0, textTransform: "uppercase" }}>The Key</h2>
             <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: "clamp(16px,1.6vw,20px)", lineHeight: 1.45, margin: "clamp(18px,2vw,28px) 0 0", maxWidth: "40ch", color: "#D8D8D2" }}>Our standing invitation to the regulars — offered, not sold. Free delivery, a member's discount, and first look at everything before the shelf.</p>
             <a href="key.html" style={{ display: "inline-block", fontFamily: V.mono, fontSize: 11, letterSpacing: "0.14em", color: "#FFFFFF", borderBottom: "1px solid #FFFFFF", paddingBottom: 4, marginTop: "clamp(22px,3vw,36px)" }}>ABOUT MEMBERSHIP →</a>
           </div>
-          <div style={{ flex: "1 1 280px", maxWidth: 460 }}>
+          <div data-reveal style={{ "--d": "140ms", flex: "1 1 280px", maxWidth: 460 }}>
             {["Free delivery on every order", "A standing member's discount", "First refusal on new arrivals", "The back room by appointment"].map((t, i) => (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "34px 1fr", gap: 16, borderTop: "1px solid #33332E", padding: "clamp(13px,1.6vw,18px) 0" }}>
                 <span style={{ fontFamily: V.mono, fontSize: 9, letterSpacing: "0.1em", color: "#7A756F", paddingTop: 3 }}>{String(i + 1).padStart(2, "0")}</span>
@@ -305,7 +305,7 @@ function Home() {
       {/* newsletter */}
       <section style={{ padding: "clamp(84px,11vw,168px) " + PAD + " clamp(56px,7vw,96px)" }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(24px,4vw,72px)", alignItems: "flex-end", justifyContent: "space-between" }}>
-          <div style={{ flex: "1 1 340px" }}>
+          <div data-reveal style={{ flex: "1 1 340px" }}>
             <h2 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(24px,3.4vw,46px)", lineHeight: 0.94, letterSpacing: "-0.028em", margin: 0, textTransform: "uppercase" }}>One email,<br />every restock</h2>
           </div>
           <div style={{ flex: "1 1 320px", maxWidth: 480 }}>

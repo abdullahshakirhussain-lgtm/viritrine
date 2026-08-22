@@ -1,0 +1,48 @@
+/* ============================================================================
+   VITRINE — motion styles, shared by the Cabinet homepage and product page.
+   Armed only when src/motion.js adds `.vit-motion` to <html>; under
+   prefers-reduced-motion the class is never added, so [data-reveal] stays fully
+   visible and nothing animates.
+   ============================================================================ */
+.vit-motion [data-reveal] {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity .75s cubic-bezier(.2,.7,.2,1), transform .85s cubic-bezier(.2,.7,.2,1);
+  transition-delay: var(--d, 0ms);
+  will-change: opacity, transform;
+}
+.vit-motion [data-reveal].in { opacity: 1; transform: none; }
+
+/* first-load entrance curtain (homepage only, via data-vit-entrance) */
+html.vit-locked, html.vit-locked body { overflow: hidden !important; }
+.vit-curtain {
+  position: fixed; inset: 0; z-index: 9999; background: #101010;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.vit-curtain-word {
+  font-family: Archivo, system-ui, sans-serif; font-weight: 800; color: #fff;
+  font-size: clamp(40px, 9vw, 116px); letter-spacing: -0.04em;
+  opacity: 0; transform: translateY(16px);
+}
+.vit-curtain.play .vit-curtain-word { animation: vitWordIn .55s cubic-bezier(.2,.7,.2,1) forwards; }
+.vit-curtain.play { animation: vitCurtainLift .82s cubic-bezier(.76,0,.24,1) .98s forwards; }
+@keyframes vitWordIn      { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes vitCurtainLift { from { transform: translateY(0); } to { transform: translateY(-102%); } }
+
+/* custom cursor (fine pointer only; augments the native cursor) */
+.vit-cursor {
+  position: fixed; top: 0; left: 0; width: 26px; height: 26px;
+  border: 1.5px solid #5A1430; border-radius: 50%;
+  pointer-events: none; z-index: 9998; opacity: 0;
+  transition: opacity .3s ease, width .22s cubic-bezier(.2,.7,.2,1), height .22s cubic-bezier(.2,.7,.2,1), background .22s ease;
+}
+.vit-cursor.on   { opacity: 1; }
+.vit-cursor.grow { width: 54px; height: 54px; background: rgba(90,20,48,0.06); }
+
+/* hero glass case drifts under the bottle for depth */
+.vit-motion [data-vit-case="hero"] { will-change: transform; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vit-curtain { display: none !important; }
+  .vit-cursor { display: none !important; }
+}
