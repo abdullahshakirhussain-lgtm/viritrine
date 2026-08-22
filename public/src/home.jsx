@@ -65,9 +65,13 @@ function Home() {
       if (!rows || !rows.length) { setSlides(HERO_FALLBACK); return; }
       setSlides(rows.map(p => ({
         eyebrow: (p.customTag || (p.isNew ? "JUST LANDED" : "ON THE SHELF")).toUpperCase(),
-        title: p.name, dek: p.copy, cta: "Shop",
-        objectLine: [p.name, p.size, p.brandLoc].filter(Boolean).join(" · "),
-        objectPrice: money(p.sale || p.price), id: p.id,
+        title: p.customTitle || p.name,
+        dek: p.customDek || p.copy,
+        cta: p.customCta || "Shop",
+        href: p.customHref || (p.id ? "/product/" + p.id : "#shelf"),
+        objectLine: p.id ? [p.name, p.size, p.brandLoc].filter(Boolean).join(" · ") : "",
+        objectPrice: p.id ? money(p.sale || p.price) : "",
+        id: p.id,
       })));
     }).catch(() => setSlides(HERO_FALLBACK));
     window.api.get("/api/editorial").then(r => setShelf(r || [])).catch(() => {});
@@ -153,7 +157,7 @@ function Home() {
             <h1 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(52px,9.2vw,138px)", lineHeight: 0.83, letterSpacing: "-0.042em", margin: 0, textTransform: "uppercase" }}>{slide.title}</h1>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(20px,3vw,48px)", marginTop: "clamp(22px,3vw,40px)", alignItems: "flex-end" }}>
               <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: "clamp(16px,1.5vw,21px)", lineHeight: 1.42, margin: 0, maxWidth: "34ch", color: "#33332E" }}>{slide.dek}</p>
-              <a href={slide.id ? "/product/" + slide.id : "#shelf"} style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.14em", borderBottom: "1px solid " + V.ink, paddingBottom: 4, whiteSpace: "nowrap" }}>{slide.cta} →</a>
+              <a href={slide.href || "#shelf"} style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.14em", borderBottom: "1px solid " + V.ink, paddingBottom: 4, whiteSpace: "nowrap" }}>{slide.cta} →</a>
             </div>
             <div style={{ display: "flex", gap: 14, marginTop: "clamp(26px,4vw,46px)", alignItems: "center" }}>
               {slides.map((s, i) => (

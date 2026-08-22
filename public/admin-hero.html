@@ -22,7 +22,11 @@ function HeroAdmin() {
   const [rows, setRows] = React.useState(null);
   const [products, setProducts] = React.useState([]);
   const [pid, setPid] = React.useState("");
-  const [tag, setTag] = React.useState("Pick of the week");
+  const [tag, setTag] = React.useState("");
+  const [title, setTitle] = React.useState("");
+  const [dek, setDek] = React.useState("");
+  const [cta, setCta] = React.useState("");
+  const [href, setHref] = React.useState("");
   const load = () => window.api.get("/api/admin/hero-slides").then(setRows);
   React.useEffect(() => {
     load();
@@ -33,11 +37,15 @@ function HeroAdmin() {
     const m = {}; products.forEach(p => m[p.id] = p); return m;
   }, [products]);
 
+  const canAdd = !!pid || !!title.trim();
   const add = async (e) => {
     e.preventDefault();
-    if (!pid) return;
-    await window.api.post("/api/admin/hero-slides", { product_id: pid, custom_tag: tag });
-    setPid(""); load();
+    if (!canAdd) return;
+    await window.api.post("/api/admin/hero-slides", {
+      product_id: pid || null, custom_tag: tag, custom_title: title,
+      custom_dek: dek, custom_cta: cta, custom_href: href,
+    });
+    setPid(""); setTag(""); setTitle(""); setDek(""); setCta(""); setHref(""); load();
   };
   const update = async (r, patch) => { await window.api.patch("/api/admin/hero-slides/" + r.id, patch); load(); };
   const del = async (r) => { if (!adminConfirm("Remove this slide?")) return; await window.api.del("/api/admin/hero-slides/" + r.id); load(); };
@@ -66,19 +74,41 @@ function HeroAdmin() {
     <AdminShell active="hero" eyebrow="Homepage carousel" title={<>Hero <em>slides</em></>}>
       <section className="form-section">
         <h3>Add a <em>slide</em></h3>
+        <p style={{ marginTop: -6, marginBottom: 16, color: "var(--ink-3)", fontSize: 13, lineHeight: 1.5 }}>
+          Two kinds of slide. <b>Feature a product</b> — pick one and its name, price
+          and size fill the hero automatically. Or <b>write an editorial slide</b> —
+          leave the product blank and type your own headline (like a seasonal or
+          brand-story slide). Any field left blank falls back to a sensible default.
+        </p>
         <form onSubmit={add} className="form-grid-2">
           <div className="field">
-            <label>Product</label>
+            <label>Product <span style={{ color: "var(--ink-3)" }}>(optional)</span></label>
             <select className="input" value={pid} onChange={e => setPid(e.target.value)}>
-              <option value="">— pick a product —</option>
+              <option value="">— editorial slide (no product) —</option>
               {products.map(p => <option key={p.id} value={p.id}>{p.name} {p.italic} — {p.brandName}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>Custom tag (above the product name)</label>
-            <input className="input" value={tag} onChange={e => setTag(e.target.value)} placeholder="Pick of the week" />
+            <label>Eyebrow tag <span style={{ color: "var(--ink-3)" }}>(small line above the headline)</span></label>
+            <input className="input" value={tag} onChange={e => setTag(e.target.value)} placeholder={pid ? "Pick of the week" : "Just landed"} />
           </div>
-          <div><button className="btn-solid" disabled={!pid}>＋ Add slide</button></div>
+          <div className="field">
+            <label>Headline <span style={{ color: "var(--ink-3)" }}>{pid ? "(optional — overrides the product name)" : "(required for editorial slides)"}</span></label>
+            <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder={pid ? "Leave blank to use the product name" : "Kept under glass"} />
+          </div>
+          <div className="field">
+            <label>Sub-line <span style={{ color: "var(--ink-3)" }}>(optional)</span></label>
+            <input className="input" value={dek} onChange={e => setDek(e.target.value)} placeholder={pid ? "Leave blank to use the product copy" : "Thirteen houses, one shop." } />
+          </div>
+          <div className="field">
+            <label>Button label <span style={{ color: "var(--ink-3)" }}>(optional)</span></label>
+            <input className="input" value={cta} onChange={e => setCta(e.target.value)} placeholder="Shop" />
+          </div>
+          <div className="field">
+            <label>Button link <span style={{ color: "var(--ink-3)" }}>(optional)</span></label>
+            <input className="input" value={href} onChange={e => setHref(e.target.value)} placeholder={pid ? "Defaults to the product page" : "#shelf  ·  /brand/ayana  ·  key.html"} />
+          </div>
+          <div><button className="btn-solid" disabled={!canAdd}>＋ Add slide</button></div>
         </form>
       </section>
 
@@ -88,21 +118,38 @@ function HeroAdmin() {
           <table className="dt">
             <thead><tr>
               <th className="bulk-cell"><BulkCheckHeader allSelected={sel.allSelected} some={sel.some} onToggleAll={sel.toggleAll} /></th>
-              <th></th><th>Order</th><th>Product</th><th>Custom tag</th><th>Active</th><th></th>
+              <th></th><th>Order</th><th>Slide</th><th>Content <span style={{fontWeight:400,color:"var(--ink-3)"}}>(edit inline)</span></th><th>Active</th><th></th>
             </tr></thead>
             <tbody>
               {rows.map((r, i) => {
                 const p = productMap[r.product_id];
+                const editorial = !r.product_id;
+                const blurPatch = (key) => (e) => e.target.value !== (r[key] || "") && update(r, { [key]: e.target.value || null });
                 return (
                   <tr key={r.id}>
                     <td className="bulk-cell"><input type="checkbox" checked={sel.selected.has(r.id)} onChange={() => sel.toggle(r.id)} /></td>
-                    <td><div className={"thumb" + (p?.image ? "" : " empty")}>{p?.image ? <img src={p.image} alt="" /> : (p?.brandName || "?")[0]}</div></td>
+                    <td><div className={"thumb" + (p?.image ? "" : " empty")}>{p?.image ? <img src={p.image} alt="" /> : (editorial ? "✎" : (p?.brandName || "?")[0])}</div></td>
                     <td>
                       <button type="button" disabled={i===0} onClick={() => move(r, -1)} style={{padding:"3px 6px"}}>↑</button>
                       <button type="button" disabled={i===rows.length-1} onClick={() => move(r, +1)} style={{padding:"3px 6px"}}>↓</button>
                     </td>
-                    <td>{p ? <><b>{p.name}</b> <em style={{fontFamily:"var(--font-serif)",color:"var(--wine)"}}>{p.italic}</em><br/><span style={{fontSize:11,color:"var(--ink-3)"}}>{p.brandName}</span></> : <span style={{color:"var(--wine)"}}>Product missing — {r.product_id}</span>}</td>
-                    <td><input className="input" defaultValue={r.custom_tag || ""} onBlur={e => e.target.value !== (r.custom_tag || "") && update(r, { custom_tag: e.target.value || null })} /></td>
+                    <td>
+                      {editorial
+                        ? <span style={{fontSize:11,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--wine)"}}>Editorial</span>
+                        : (p ? <><b>{p.name}</b> <em style={{fontFamily:"var(--font-serif)",color:"var(--wine)"}}>{p.italic}</em><br/><span style={{fontSize:11,color:"var(--ink-3)"}}>{p.brandName}</span></>
+                             : <span style={{color:"var(--wine)"}}>Product missing — {r.product_id}</span>)}
+                    </td>
+                    <td>
+                      <div style={{display:"flex",flexDirection:"column",gap:6,minWidth:260}}>
+                        <input className="input" defaultValue={r.custom_tag || ""} placeholder="Eyebrow tag" onBlur={blurPatch("custom_tag")} />
+                        <input className="input" defaultValue={r.custom_title || ""} placeholder={editorial ? "Headline (required)" : "Headline — blank uses product name"} onBlur={blurPatch("custom_title")} />
+                        <input className="input" defaultValue={r.custom_dek || ""} placeholder={editorial ? "Sub-line" : "Sub-line — blank uses product copy"} onBlur={blurPatch("custom_dek")} />
+                        <div style={{display:"flex",gap:6}}>
+                          <input className="input" defaultValue={r.custom_cta || ""} placeholder="Button" style={{flex:"0 0 96px"}} onBlur={blurPatch("custom_cta")} />
+                          <input className="input" defaultValue={r.custom_href || ""} placeholder={editorial ? "Link (#shelf)" : "Link — blank = product page"} onBlur={blurPatch("custom_href")} />
+                        </div>
+                      </div>
+                    </td>
                     <td><button type="button" className={"chip-toggle" + (r.active ? " on" : "")} onClick={() => update(r, { active: !r.active })}>{r.active ? "Active" : "Hidden"}</button></td>
                     <td className="row-actions"><button className="danger" onClick={() => del(r)}>Remove</button></td>
                   </tr>

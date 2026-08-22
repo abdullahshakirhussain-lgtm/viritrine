@@ -326,13 +326,31 @@ app.get("/api/announcements", (_req, res) => {
 
 // Hero slides — joins to products so the client gets everything in one shot.
 app.get("/api/hero-slides", (_req, res) => {
+  // LEFT JOIN so editorial slides (no product) still appear. A slide shows when
+  // it's editorial (product_id NULL) or its product exists and is active.
   const rows = db.prepare(`
-    SELECT h.id, h.custom_tag, h.sort, p.*
-    FROM hero_slides h JOIN products p ON p.id = h.product_id
-    WHERE h.active = 1 AND (p.is_active IS NULL OR p.is_active = 1)
+    SELECT h.id AS slide_id, h.product_id,
+           h.custom_tag, h.custom_title, h.custom_dek, h.custom_cta, h.custom_href,
+           h.sort, p.*
+    FROM hero_slides h
+    LEFT JOIN products p ON p.id = h.product_id
+    WHERE h.active = 1
+      AND (h.product_id IS NULL OR (p.id IS NOT NULL AND (p.is_active IS NULL OR p.is_active = 1)))
     ORDER BY h.sort, h.id
   `).all();
-  res.json(rows.map(r => ({ ...hydrateProduct(r), customTag: r.custom_tag })));
+  res.json(rows.map(r => {
+    const hasProduct = r.product_id != null && r.id != null;
+    const base = hasProduct ? hydrateProduct(r) : {};
+    return {
+      ...base,
+      slideId: r.slide_id,
+      customTag: r.custom_tag,
+      customTitle: r.custom_title,
+      customDek: r.custom_dek,
+      customCta: r.custom_cta,
+      customHref: r.custom_href,
+    };
+  }));
 });
 
 // Editorial picks — for the homepage's "Shop the Shelf" rail.
@@ -1587,22 +1605,31 @@ app.get("/api/admin/hero-slides", requireAuth, requireAdmin, (_req, res) => {
 });
 app.post("/api/admin/hero-slides", requireAuth, requireAdmin, (req, res) => {
   const pid = String(req.body?.product_id || "").trim();
-  if (!pid) return res.status(400).json({ error: "product_id required" });
-  if (!db.prepare("SELECT id FROM products WHERE id=?").get(pid)) return res.status(404).json({ error: "Product not found" });
+  const title = String(req.body?.custom_title || "").trim();
+  // A slide is valid if it names a product OR is an editorial slide with a headline.
+  if (!pid && !title) return res.status(400).json({ error: "Pick a product or write a headline" });
+  if (pid && !db.prepare("SELECT id FROM products WHERE id=?").get(pid)) return res.status(404).json({ error: "Product not found" });
   const m = db.prepare("SELECT COALESCE(MAX(sort),-1) m FROM hero_slides").get().m;
-  const info = db.prepare("INSERT INTO hero_slides (product_id, custom_tag, sort) VALUES (?, ?, ?)").run(
-    pid, req.body.custom_tag || null, m + 1,
+  const info = db.prepare(`INSERT INTO hero_slides
+    (product_id, custom_tag, custom_title, custom_dek, custom_cta, custom_href, sort)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    pid || null, req.body.custom_tag || null, title || null,
+    req.body.custom_dek || null, req.body.custom_cta || null, req.body.custom_href || null, m + 1,
   );
   res.json({ ok: true, id: info.lastInsertRowid });
 });
 app.patch("/api/admin/hero-slides/:id", requireAuth, requireAdmin, (req, res) => {
   const cur = db.prepare("SELECT * FROM hero_slides WHERE id=?").get(req.params.id);
   if (!cur) return res.status(404).json({ error: "Not found" });
-  db.prepare("UPDATE hero_slides SET product_id=?, custom_tag=?, sort=?, active=? WHERE id=?").run(
-    req.body.product_id ?? cur.product_id,
-    req.body.custom_tag !== undefined ? req.body.custom_tag : cur.custom_tag,
-    req.body.sort ?? cur.sort,
-    req.body.active != null ? (req.body.active ? 1 : 0) : cur.active,
+  const b = req.body || {};
+  const pick = (k) => (b[k] !== undefined ? (b[k] === "" ? null : b[k]) : cur[k]);
+  db.prepare(`UPDATE hero_slides SET
+      product_id=?, custom_tag=?, custom_title=?, custom_dek=?, custom_cta=?, custom_href=?, sort=?, active=?
+      WHERE id=?`).run(
+    b.product_id !== undefined ? (b.product_id || null) : cur.product_id,
+    pick("custom_tag"), pick("custom_title"), pick("custom_dek"), pick("custom_cta"), pick("custom_href"),
+    b.sort ?? cur.sort,
+    b.active != null ? (b.active ? 1 : 0) : cur.active,
     req.params.id,
   );
   res.json({ ok: true });

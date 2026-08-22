@@ -347,6 +347,12 @@ ensureColumn("brands",   "image",            "image TEXT");
 ensureColumn("users",    "tier",             "tier TEXT DEFAULT 'standard'"); // standard | premium
 ensureColumn("users",    "tier_since",        "tier_since INTEGER");
 ensureColumn("orders",   "discount",          "discount INTEGER DEFAULT 0");  // premium (The Key) discount
+// Editorial hero slides — a slide can be product-based (product_id set) OR a
+// free-form editorial slide (product_id NULL, these custom_* fields drive it).
+ensureColumn("hero_slides", "custom_title", "custom_title TEXT");  // headline (overrides product name)
+ensureColumn("hero_slides", "custom_dek",   "custom_dek TEXT");    // supporting line (overrides product copy)
+ensureColumn("hero_slides", "custom_cta",   "custom_cta TEXT");    // button label (default "Shop")
+ensureColumn("hero_slides", "custom_href",  "custom_href TEXT");   // where the CTA points (default #shelf)
 
 // ── Phone-OTP sign-up: make users.email optional ───────────────────────────
 // Phone-first accounts have no email, but the original schema declared
