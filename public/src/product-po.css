@@ -3,21 +3,21 @@
    touches the rest of the site. Keyframes + :hover states (the design used a
    DC-only `style-hover`, re-expressed here as real CSS) + reduced-motion.
    ============================================================================ */
-.po-root a { color: #14181A; text-decoration: none; }
-.po-root a:hover { color: #E0511B; }
-.po-root ::selection { background: #0C3B34; color: #fff; }
+.po-root a { color: #101010; text-decoration: none; }
+.po-root a:hover { color: #5A1430; }
+.po-root ::selection { background: #5A1430; color: #fff; }
 
 /* Interactive hover hooks used by the JSX */
 .po-root .po-hover:hover,
-.po-root .po-hover:hover span { color: #E0511B !important; }
+.po-root .po-hover:hover span { color: #5A1430 !important; }
 .po-root .po-add { transition: background .35s ease, letter-spacing .35s ease; }
-.po-root .po-add:hover { background: #E0511B !important; letter-spacing: .2em; }
+.po-root .po-add:hover { background: #5A1430 !important; letter-spacing: .2em; }
 .po-root .po-thumb { transition: border-color .25s ease; }
-.po-root .po-thumb:hover { border-color: #E0511B !important; }
-.po-root .po-radd:hover { color: #E0511B !important; border-color: #E0511B !important; }
-.po-root .po-row:hover { background: #F5F8F7; }
-.po-root .po-bagbtn:hover { color: #E0511B !important; border-color: #E0511B !important; }
-.po-root .po-qtybtn:hover { color: #E0511B !important; }
+.po-root .po-thumb:hover { border-color: #5A1430 !important; }
+.po-root .po-radd:hover { color: #5A1430 !important; border-color: #5A1430 !important; }
+.po-root .po-row:hover { background: #FAFAF8; }
+.po-root .po-bagbtn:hover { color: #5A1430 !important; border-color: #5A1430 !important; }
+.po-root .po-qtybtn:hover { color: #5A1430 !important; }
 
 @keyframes poRise  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes poGlint { 0% { transform: translateX(-46%); opacity: 0; } 14% { opacity: .55; } 52% { transform: translateX(46%); opacity: 0; } 100% { transform: translateX(46%); opacity: 0; } }

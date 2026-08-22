@@ -7,11 +7,12 @@
 <title>Product — VITRINE</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+<!-- Unified with the homepage — "The Cabinet": Archivo + Newsreader + IBM Plex Mono -->
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,200..500;1,6..72,200..400&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="src/product-po.css" />
 <style>
   html, body { margin: 0; }
-  body { background: #FDFDFC; color: #14181A; -webkit-font-smoothing: antialiased; }
+  body { background: #FFFFFF; color: #101010; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   * { box-sizing: border-box; }
 </style>
 </head>
@@ -27,12 +28,16 @@
 <script type="text/babel" src="src/Bottle.jsx"></script>
 
 <script type="text/babel">
-/* ── Palette / type tokens (from Product Detail.dc.html) ── */
+/* ── Palette / type tokens — unified with the homepage ("The Cabinet").
+   The layout is still Port-of-Entry; only the skin changed. Legacy keys
+   `teal`/`orange` are kept as aliases so the JSX below is untouched:
+   teal → ink (structure/headings), orange → wine (the single accent). ── */
 const V = {
-  paper: "#FDFDFC", ink: "#14181A", teal: "#0C3B34", orange: "#E0511B",
-  mist: "#E9EDEC", rule: "#C9CFCD", muted: "#7B8583",
-  display: "'Bricolage Grotesque', system-ui, sans-serif",
-  body: "'IBM Plex Sans', system-ui, sans-serif",
+  paper: "#FFFFFF", ink: "#101010", wine: "#5A1430",
+  teal: "#101010", orange: "#5A1430",
+  glass: "#EEF2F1", mist: "#EEF2F1", rule: "#DCDCD6", ruleSoft: "#EFEFEA", muted: "#6E6E68",
+  display: "Archivo, system-ui, sans-serif",
+  body: "Newsreader, Georgia, serif",
   mono: "'IBM Plex Mono', ui-monospace, monospace",
 };
 const PAD = "clamp(18px, 4vw, 60px)";
@@ -54,7 +59,7 @@ function flyToBag(caseEl, bagEl) {
   const dx = b.left + b.width / 2 - (x0 + w / 2), dy = b.top + b.height / 2 - (y0 + h / 2);
   const cap = Math.round(h * 0.16);
   const ghost = document.createElement("div");
-  ghost.style.cssText = "position:fixed;z-index:70;pointer-events:none;left:" + x0 + "px;top:" + y0 + "px;width:" + w + "px;height:" + h + "px;filter:drop-shadow(0 22px 26px rgba(12,59,52,0.34));";
+  ghost.style.cssText = "position:fixed;z-index:70;pointer-events:none;left:" + x0 + "px;top:" + y0 + "px;width:" + w + "px;height:" + h + "px;filter:drop-shadow(0 22px 26px rgba(16,16,16,0.28));";
   ghost.innerHTML =
     '<div style="position:absolute;left:34%;right:34%;top:0;height:' + cap + 'px;background:linear-gradient(100deg,#1E2A28,#0A0F0E);border:1px solid #000;border-bottom:none;"></div>' +
     '<div style="position:absolute;left:0;right:0;top:' + (cap - 1) + 'px;bottom:0;border:1px solid ' + V.teal + ';border-radius:3px 3px 5px 5px;background:linear-gradient(104deg,rgba(255,255,255,0.96),' + V.teal + '22 46%,rgba(238,242,241,0.9));box-shadow:inset 0 0 0 3px rgba(255,255,255,0.55);overflow:hidden;">' +
@@ -108,7 +113,7 @@ function BagDrawer({ open, bag, freeOver, onClose, onStep }) {
   const mono = { fontFamily: V.mono };
   return (
     <div>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(12,59,52,0.32)", zIndex: 55, animation: "poScrim 0.3s both" }}></div>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(16,16,16,0.3)", zIndex: 55, animation: "poScrim 0.3s both" }}></div>
       <aside style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(430px,94vw)", background: V.paper, borderLeft: "1px solid " + V.teal, zIndex: 60, display: "flex", flexDirection: "column", animation: "poDrawer 0.36s cubic-bezier(0.2,0.8,0.2,1) both" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "20px clamp(18px,3vw,26px)", borderBottom: "1px solid " + V.teal }}>
           <span style={{ fontFamily: V.display, fontWeight: 700, fontSize: 18, letterSpacing: "-0.01em", color: V.teal }}>Your bag</span>
@@ -265,8 +270,8 @@ function PDP() {
       {/* hero + info */}
       <section style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", borderBottom: "1px solid " + V.teal }}>
         {/* glass case */}
-        <div ref={caseRef} style={{ flex: "1 1 420px", minWidth: "min(100%,320px)", position: "relative", overflow: "hidden", background: "linear-gradient(116deg,#F3F6F5," + V.mist + " 52%,#F7FAF9)", borderRight: "1px solid " + V.teal, minHeight: "clamp(360px,46vw,620px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "clamp(24px,4vw,56px)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -80px 100px -80px rgba(12,59,52,0.18)" }}>
-          <div style={{ position: "absolute", left: 0, right: 0, bottom: "16%", height: 1, background: "rgba(12,59,52,0.16)" }}></div>
+        <div ref={caseRef} style={{ flex: "1 1 420px", minWidth: "min(100%,320px)", position: "relative", overflow: "hidden", background: "linear-gradient(116deg,rgba(255,255,255,0.96)," + V.glass + " 52%,rgba(252,253,253,0.98))", borderRight: "1px solid " + V.rule, minHeight: "clamp(360px,46vw,620px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "clamp(24px,4vw,56px)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -80px 100px -80px rgba(16,16,16,0.14)" }}>
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: "16%", height: 1, background: "rgba(16,16,16,0.13)" }}></div>
           {p.image
             ? <img src={p.image} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: "clamp(24px,5vw,72px)" }} />
             : <div style={{ width: "62%", maxWidth: 300, marginBottom: "12%" }}><ProductVisual image={p.image} variant={p.variant} brand={b} product={{ name: p.italic }} liquid={p.liquid} liquidTop={p.liquidTop} /></div>}
