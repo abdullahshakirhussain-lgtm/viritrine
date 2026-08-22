@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sales — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+// Sales analytics — the money view (revenue over time, best sellers by actual
+// sales, and how much comes from The Key members). Reads /api/admin/sales.
+const money = (n) => window.adminFmtMoney(n);
+const shortMoney = (n) => {
+  n = Number(n || 0);
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
+  if (n >= 1e3) return Math.round(n / 1e3) + "k";
+  return String(n);
+};
+
+// Compact inline SVG bar chart of daily revenue.
+function RevenueChart({ series }) {
+  if (!series || !series.length) return null;
+  const W = 760, H = 200, padB = 26, padL = 4;
+  const max = Math.max(1, ...series.map(s => s.revenue));
+  const n = series.length;
+  const gap = n > 45 ? 1 : 2;
+  const bw = (W - padL * 2) / n - gap;
+  const [hover, setHover] = React.useState(-1);
+  return (
+    <div style={{ position: "relative", overflowX: "auto" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", minWidth: 520 }}>
+        {[0.25, 0.5, 0.75, 1].map(f => (
+          <line key={f} x1={padL} x2={W - padL} y1={(H - padB) * (1 - f)} y2={(H - padB) * (1 - f)}
+                stroke="var(--rule, #e7e2da)" strokeWidth="1" strokeDasharray="2 4" />
+        ))}
+        {series.map((s, i) => {
+          const h = s.revenue > 0 ? Math.max(2, (s.revenue / max) * (H - padB)) : 0;
+          const x = padL + i * (bw + gap);
+          const on = hover === i;
+          return (
+            <rect key={i} x={x} y={(H - padB) - h} width={bw} height={h} rx="1"
+                  fill={on ? "var(--orange, #E0511B)" : "var(--teal, #0C3B34)"}
+                  opacity={hover === -1 || on ? 1 : 0.55}
+                  onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} />
+          );
+        })}
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
+        <span>{series[0].date}</span>
+        <span>{hover >= 0 ? `${series[hover].date} · ${money(series[hover].revenue)} · ${series[hover].orders} order${series[hover].orders === 1 ? "" : "s"}` : `peak ${money(max)}`}</span>
+        <span>{series[series.length - 1].date}</span>
+      </div>
+    </div>
+  );
+}
+
+function Sales() {
+  const [range, setRange] = React.useState(30);
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    setLoading(true);
+    window.api.get("/api/admin/sales?range=" + range)
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [range]);
+
+  const rangeBtns = (
+    <div style={{ display: "flex", gap: 6 }}>
+      {[7, 30, 90].map(r => (
+        <button key={r} type="button" onClick={() => setRange(r)}
+          className={"chip-toggle" + (range === r ? " on" : "")}>{r}d</button>
+      ))}
+    </div>
+  );
+
+  const m = data && data.members;
+  const memberRev = m ? m.premium.revenue : 0;
+  const totalRev = data ? data.totals.revenue : 0;
+  const memberShare = totalRev > 0 ? Math.round((memberRev / totalRev) * 100) : 0;
+  const topMaxRev = data && data.topProducts.length ? Math.max(1, data.topProducts[0].revenue) : 1;
+
+  return (
+    <AdminShell active="sales" eyebrow="The money view" title={<>Sales <em>analytics</em></>} actions={rangeBtns}>
+      {loading || !data ? <p>Loading…</p> : (
+        <>
+          <div className="stat-grid" style={{ marginBottom: 22 }}>
+            <div className="stat-card"><div className="l">Revenue ({range}d)</div><div className="v">{money(data.totals.revenue)}</div></div>
+            <div className="stat-card"><div className="l">Orders</div><div className="v">{data.totals.orders}</div></div>
+            <div className="stat-card"><div className="l">Avg order</div><div className="v">{money(data.totals.aov)}</div></div>
+            <div className="stat-card"><div className="l">Member discount given</div><div className="v">{money(data.totals.discount)}</div></div>
+          </div>
+
+          <section className="form-section">
+            <h3>Revenue <em>over time</em></h3>
+            {data.totals.orders === 0
+              ? <div className="empty-admin"><h3>No sales in this window</h3><p>Try a wider range, or check back once orders come in.</p></div>
+              : <RevenueChart series={data.series} />}
+          </section>
+
+          <section className="form-section">
+            <h3>The <em>Key</em> — who's buying</h3>
+            <p style={{ marginTop: -6, marginBottom: 16, color: "var(--ink-3)", fontSize: 13, lineHeight: 1.5 }}>
+              {m.premiumCount} premium member{m.premiumCount === 1 ? "" : "s"} ·
+              {" "}{m.eligibleCount} standard customer{m.eligibleCount === 1 ? "" : "s"} past the {money(m.threshold)} threshold and eligible for an invite.
+            </p>
+            <div className="stat-grid">
+              <div className="stat-card"><div className="l">Member revenue ({range}d)</div><div className="v">{money(m.premium.revenue)} <em>· {memberShare}%</em></div></div>
+              <div className="stat-card"><div className="l">Standard accounts</div><div className="v">{money(m.standard.revenue)}</div></div>
+              <div className="stat-card"><div className="l">Guests</div><div className="v">{money(m.guest.revenue)}</div></div>
+              <div className="stat-card"><div className="l">Premium members</div><div className="v">{m.premiumCount} <em>· {m.eligibleCount} eligible</em></div></div>
+            </div>
+            {/* revenue split bar */}
+            {totalRev > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", border: "1px solid var(--rule,#e7e2da)" }}>
+                  {[["premium", "var(--orange,#E0511B)"], ["standard", "var(--teal,#0C3B34)"], ["guest", "#c9c2b6"]].map(([k, c]) => {
+                    const rev = m[k].revenue; const pct = Math.round((rev / totalRev) * 100);
+                    return rev > 0 ? <div key={k} title={`${k}: ${money(rev)} (${pct}%)`} style={{ width: pct + "%", background: c }} /> : null;
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 18, marginTop: 8, fontSize: 11, color: "var(--ink-3)", flexWrap: "wrap" }}>
+                  <span><b style={{ color: "var(--orange,#E0511B)" }}>■</b> Members</span>
+                  <span><b style={{ color: "var(--teal,#0C3B34)" }}>■</b> Standard accounts</span>
+                  <span><b style={{ color: "#c9c2b6" }}>■</b> Guests</span>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="form-section">
+            <h3>Best <em>sellers</em> <span style={{ fontWeight: 400, color: "var(--ink-3)", fontSize: 13 }}>· by sales, {range}d</span></h3>
+            {data.topProducts.length === 0
+              ? <div className="empty-admin"><h3>Nothing sold yet</h3><p>Best sellers appear here once orders come in.</p></div>
+              : <div className="dt-wrap">
+                  <table className="dt">
+                    <thead><tr><th>#</th><th>Product</th><th>Brand</th><th className="num">Units</th><th className="num">Revenue</th><th style={{ width: "28%" }}></th></tr></thead>
+                    <tbody>
+                      {data.topProducts.map((p, i) => (
+                        <tr key={p.productId}>
+                          <td style={{ color: "var(--ink-3)" }}>{i + 1}</td>
+                          <td><b>{p.name}</b></td>
+                          <td><span style={{ fontSize: 12, color: "var(--ink-3)" }}>{p.brand}</span></td>
+                          <td className="num">{p.units}</td>
+                          <td className="num">{money(p.revenue)}</td>
+                          <td>
+                            <div style={{ height: 8, background: "var(--rule,#efeae1)", borderRadius: 4, overflow: "hidden" }}>
+                              <div style={{ width: Math.max(3, Math.round((p.revenue / topMaxRev) * 100)) + "%", height: "100%", background: "var(--teal,#0C3B34)" }} />
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>}
+          </section>
+        </>
+      )}
+    </AdminShell>
+  );
+}
+
+mountAdmin(Sales);
+</script>
+</body>
+</html>

@@ -14,6 +14,7 @@ function AdminShell({ active, title, eyebrow, actions, children }) {
         <div className="admin-brand">VITRINE<small>Admin · Colombo</small></div>
         <nav className="admin-nav">
           {link("admin.html",              "Dashboard",     "dashboard")}
+          {link("admin-sales.html",        "Sales",         "sales")}
           <div className="sect">Catalogue</div>
           {link("admin-products.html",     "Products",      "products")}
           {link("admin-brands.html",       "Brands",        "brands")}

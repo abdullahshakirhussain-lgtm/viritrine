@@ -1111,6 +1111,90 @@ app.get("/api/admin/analytics", requireAuth, requireAdmin, (req, res) => {
   res.json({ range: days, funnel, top, pairs, knownCustomers, repeatCustomers, totals });
 });
 
+// ── admin: sales analytics ──────────────────────────────────
+// Money view of the business (the /analytics endpoint above is behavioural):
+// revenue over time, best sellers by actual sales, and how much of it comes from
+// The Key members. Excludes cancelled/refunded orders throughout.
+app.get("/api/admin/sales", requireAuth, requireAdmin, (req, res) => {
+  const days = [7, 30, 90].includes(parseInt(req.query.range, 10)) ? parseInt(req.query.range, 10) : 30;
+  const since = Math.floor(Date.now() / 1000) - days * 86400;
+  const OK = "status NOT IN ('cancelled','refunded')";
+
+  // Revenue + order count per local day, zero-filled so the chart has no gaps.
+  const rawSeries = db.prepare(`
+    SELECT date(created_at,'unixepoch','localtime') d,
+           COALESCE(SUM(total),0) revenue, COUNT(*) orders
+    FROM orders WHERE created_at >= ? AND ${OK}
+    GROUP BY d
+  `).all(since);
+  const byDay = Object.fromEntries(rawSeries.map(r => [r.d, r]));
+  const series = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const key = new Date(Date.now() - i * 86400000).toLocaleDateString("en-CA"); // YYYY-MM-DD, local
+    const row = byDay[key];
+    series.push({ date: key, revenue: row ? row.revenue : 0, orders: row ? row.orders : 0 });
+  }
+
+  // Best sellers by actual sales (units + revenue) within the range.
+  const topProducts = db.prepare(`
+    SELECT oi.product_id, oi.name, oi.italic, oi.brand_key,
+           SUM(oi.qty) units, SUM(oi.line_total) revenue
+    FROM order_items oi JOIN orders o ON o.id = oi.order_id
+    WHERE o.created_at >= ? AND o.${OK}
+    GROUP BY oi.product_id
+    ORDER BY revenue DESC
+    LIMIT 12
+  `).all(since).map(r => ({
+    productId: r.product_id,
+    name: `${r.name}${r.italic ? " " + r.italic : ""}`,
+    brand: r.brand_key || "",
+    units: r.units, revenue: r.revenue,
+  }));
+
+  // Range totals.
+  const t = db.prepare(`SELECT COALESCE(SUM(total),0) revenue, COUNT(*) orders,
+                               COALESCE(SUM(discount),0) discount
+                        FROM orders WHERE created_at >= ? AND ${OK}`).get(since);
+  const totals = {
+    revenue: t.revenue, orders: t.orders, discount: t.discount,
+    aov: t.orders ? Math.round(t.revenue / t.orders) : 0,
+  };
+
+  // Revenue split by who bought: premium member / standard account / guest.
+  const tierRows = db.prepare(`
+    SELECT CASE WHEN o.user_id IS NULL THEN 'guest'
+                WHEN u.tier='premium' THEN 'premium' ELSE 'standard' END bucket,
+           COALESCE(SUM(o.total),0) revenue, COUNT(*) orders
+    FROM orders o LEFT JOIN users u ON u.id = o.user_id
+    WHERE o.created_at >= ? AND o.${OK}
+    GROUP BY bucket
+  `).all(since);
+  const bucket = Object.fromEntries(tierRows.map(r => [r.bucket, r]));
+  const seg = (k) => ({ revenue: bucket[k]?.revenue || 0, orders: bucket[k]?.orders || 0 });
+
+  // Membership standing (not range-bound): premium count + how many standard
+  // customers have crossed the spend threshold and are eligible for an invite.
+  const cfg = membershipCfg();
+  const premiumCount = db.prepare("SELECT COUNT(*) c FROM users WHERE tier='premium'").get().c;
+  const eligibleCount = db.prepare(`
+    SELECT COUNT(*) c FROM (
+      SELECT u.id, COALESCE(SUM(o.total),0) spend
+      FROM users u LEFT JOIN orders o ON o.user_id = u.id AND o.${OK}
+      WHERE (u.tier IS NULL OR u.tier <> 'premium')
+      GROUP BY u.id HAVING spend >= ?
+    )
+  `).get(cfg.threshold).c;
+
+  res.json({
+    range: days, series, topProducts, totals,
+    members: {
+      premiumCount, eligibleCount,
+      threshold: cfg.threshold, discountPct: cfg.discountPct,
+      premium: seg("premium"), standard: seg("standard"), guest: seg("guest"),
+    },
+  });
+});
+
 // ── admin: AI product authoring (photo → draft fields) ──────────────────────
 // In-memory uploader (we never persist the analyzed file here — the admin uploads
 // the real product image through the normal flow after reviewing the draft).
