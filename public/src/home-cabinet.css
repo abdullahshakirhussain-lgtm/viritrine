@@ -1,0 +1,44 @@
+/* ============================================================================
+   VITRINE homepage — "The Cabinet" (Claude Design). White gallery, Archivo +
+   Newsreader + IBM Plex Mono, wine accent. Tokens live on :root so bottle.js
+   can read --vit-wine; keyframes + :hover states (the design's DC-only
+   `style-hover`) are re-expressed here. Homepage-only stylesheet.
+   ============================================================================ */
+:root {
+  --vit-paper: #FFFFFF; --vit-ink: #101010; --vit-wine: #5A1430;
+  --vit-glass: #EEF2F1; --vit-rule: #DCDCD6; --vit-rule-soft: #EFEFEA;
+  --vit-muted: #6E6E68; --vit-porcelain: #F3F5F4;
+  --vit-display: Archivo, system-ui, sans-serif;
+  --vit-body: Newsreader, Georgia, serif;
+  --vit-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --vit-pad: clamp(18px, 4.2vw, 64px);
+}
+html, body { margin: 0; }
+body { background: #FFFFFF; color: #101010; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+* { box-sizing: border-box; }
+
+.vit-root a { color: #101010; text-decoration: none; }
+.vit-root a:hover { color: #5A1430; }
+.vit-root ::selection { background: #5A1430; color: #fff; }
+
+/* hover hooks */
+.vit-root .vit-navlink { border-bottom: 1px solid transparent; padding-bottom: 2px; }
+.vit-root .vit-navlink:hover { border-bottom-color: #5A1430; }
+.vit-root .vit-add:hover { color: #5A1430 !important; border-color: #5A1430 !important; }
+.vit-root .vit-bag:hover { color: #5A1430 !important; border-color: #5A1430 !important; }
+.vit-root .vit-bagfab { transition: background .3s ease; }
+.vit-root .vit-bagfab:hover { background: #5A1430 !important; }
+.vit-root .vit-row:hover { background: #FAFAF8; }
+.vit-root .vit-brandcell:hover { background: #FBFAFA; }
+.vit-root .vit-counter:hover { border-color: #5A1430 !important; color: #5A1430 !important; }
+.vit-root .vit-tile:hover .vit-glint { opacity: 1; transform: translateX(300%); transition: transform 1.1s cubic-bezier(0.33,1,0.68,1), opacity 0.22s ease; }
+
+@keyframes vitDrawer { from { transform: translateX(102%); } to { transform: translateX(0); } }
+@keyframes vitScrim  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vitRise   { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes vitGlint  { 0% { transform: translateX(-46%); opacity: 0; } 14% { opacity: 0.62; } 52% { transform: translateX(46%); opacity: 0; } 100% { transform: translateX(46%); opacity: 0; } }
+@keyframes vitToast  { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .vit-root *, .vit-root *::before, .vit-root *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

@@ -1,44 +1,27 @@
 <!doctype html>
-<html lang="en" data-theme="ivory" data-skin="gallery">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
+<base href="/" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>VITRINE — Beauty, Curated</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<!-- Gallery skin type: Space Grotesk (display) + Space Mono (numerals/labels) + Manrope (body) -->
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<!-- The Cabinet: Archivo (display) + Newsreader (body) + IBM Plex Mono (labels) -->
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,200..500;1,6..72,200..400&display=swap" rel="stylesheet" />
 
-<link rel="stylesheet" href="src/styles.css" />
-<link rel="stylesheet" href="src/nav.css" />
-<link rel="stylesheet" href="src/pages.css" />
-<link rel="stylesheet" href="src/gallery.css" />
-
-<!-- Three.js (ESM) for the liquid-chrome hero. Runs as its own module; only touches its canvas. -->
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
+<link rel="stylesheet" href="src/home-cabinet.css" />
 </head>
 <body>
 <div id="root"></div>
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
 
 <script src="src/api.jsx"></script>
-<script type="text/babel" src="src/tweaks-panel.jsx"></script>
-<script type="text/babel" src="src/Bottle.jsx"></script>
-<script type="text/babel" src="src/data.jsx"></script>
-<script type="text/babel" src="src/sale.jsx"></script>
-<script type="text/babel" src="src/nav.jsx"></script>
-<script type="text/babel" src="src/App.jsx"></script>
-<script type="module" src="src/hero-gl.js"></script>
+<script type="text/babel" src="src/home.jsx"></script>
+<script type="module" src="src/bottle.js"></script>
 </body>
 </html>
