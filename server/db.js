@@ -365,6 +365,11 @@ ensureColumn("brands",   "image",            "image TEXT");
 ensureColumn("users",    "tier",             "tier TEXT DEFAULT 'standard'"); // standard | premium
 ensureColumn("users",    "tier_since",        "tier_since INTEGER");
 ensureColumn("orders",   "discount",          "discount INTEGER DEFAULT 0");  // premium (The Key) discount
+// Gifting suite (gift_wrap already exists):
+ensureColumn("orders",   "is_gift",           "is_gift INTEGER DEFAULT 0");
+ensureColumn("orders",   "gift_recipient",    "gift_recipient TEXT");
+ensureColumn("orders",   "gift_message",      "gift_message TEXT");       // handwritten-card note
+ensureColumn("orders",   "gift_hide_prices",  "gift_hide_prices INTEGER DEFAULT 0"); // gift receipt
 // Editorial hero slides — a slide can be product-based (product_id set) OR a
 // free-form editorial slide (product_id NULL, these custom_* fields drive it).
 ensureColumn("hero_slides", "custom_title", "custom_title TEXT");  // headline (overrides product name)

@@ -159,6 +159,14 @@ function OrdersAdmin() {
                 </div>
               </div>
 
+              {!!open.order.is_gift && (<div style={{marginTop:22,padding:14,background:"var(--ink)",color:"var(--paper)",border:"1px solid var(--ink)",fontSize:13}}>
+                <div className="eyebrow" style={{marginBottom:6,color:"var(--gold)"}}>✦ Gift order{open.order.gift_recipient ? " · for " + open.order.gift_recipient : ""}</div>
+                {open.order.gift_message && <div style={{fontStyle:"italic",lineHeight:1.5,marginBottom:8}}>Card: “{open.order.gift_message}”</div>}
+                <div style={{fontSize:12,opacity:0.85}}>
+                  {open.order.gift_wrap ? "Hand-wrap · " : ""}{open.order.gift_hide_prices ? "Include a price-free gift receipt (no prices in the box)" : "Standard receipt"}
+                </div>
+              </div>)}
+
               {open.order.note && (<div style={{marginTop:22,padding:14,background:"var(--bg-2)",border:"1px solid var(--line)",fontSize:13}}>
                 <div className="eyebrow" style={{marginBottom:4}}>Customer note</div>
                 {open.order.note}

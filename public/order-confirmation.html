@@ -76,6 +76,15 @@ function ConfirmPage() {
               Shipping to <b>{data.order.full_name}</b><br/>
               {data.order.line1}{data.order.line2 ? ", " + data.order.line2 : ""}, {data.order.city} {data.order.postcode || ""}
             </div>
+            {data.order.is_gift ? (
+              <div style={{marginTop:18,padding:"14px 16px",border:"1px solid var(--line)",background:"var(--bg-2)"}}>
+                <div style={{fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",color:"var(--ink-2)",marginBottom:6}}>
+                  ✦ Wrapped as a gift{data.order.gift_recipient ? " for " + data.order.gift_recipient : ""}
+                </div>
+                {data.order.gift_message && <div style={{fontStyle:"italic",fontSize:14,color:"var(--ink-2)",lineHeight:1.5}}>“{data.order.gift_message}”</div>}
+                {!!data.order.gift_hide_prices && <div style={{fontSize:12,color:"var(--ink-3)",marginTop:8}}>A price-free gift receipt will go in the box.</div>}
+              </div>
+            ) : null}
           </div>
         )}
 

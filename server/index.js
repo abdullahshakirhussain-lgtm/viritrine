@@ -919,6 +919,10 @@ const orderSchema = z.object({
   payment:   z.enum(["card", "cod", "koko"]),
   note:      z.string().max(800).optional(),
   gift_wrap: z.boolean().optional(),
+  is_gift:          z.boolean().optional(),
+  gift_recipient:   z.string().max(120).optional(),
+  gift_message:     z.string().max(600).optional(),
+  gift_hide_prices: z.boolean().optional(),
   samples:   z.array(z.string()).max(3).optional(),
 });
 
@@ -951,8 +955,8 @@ app.post("/api/orders", (req, res) => {
   const tx = db.transaction(() => {
     const info = db.prepare(`
       INSERT INTO orders
-        (number,user_id,email,status,subtotal,shipping,discount,total,delivery,payment,full_name,phone,line1,line2,city,postcode,country,note,samples,gift_wrap)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (number,user_id,email,status,subtotal,shipping,discount,total,delivery,payment,full_name,phone,line1,line2,city,postcode,country,note,samples,gift_wrap,is_gift,gift_recipient,gift_message,gift_hide_prices)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       number, u?.id || null, data.email.toLowerCase(),
       data.payment === "card" ? "awaiting_payment" : "pending",
@@ -961,6 +965,8 @@ app.post("/api/orders", (req, res) => {
       data.postcode || null, data.country || "LK", data.note || null,
       (data.samples && data.samples.length) ? JSON.stringify(data.samples) : null,
       data.gift_wrap ? 1 : 0,
+      data.is_gift ? 1 : 0, data.is_gift ? (data.gift_recipient || null) : null,
+      data.is_gift ? (data.gift_message || null) : null, data.is_gift && data.gift_hide_prices ? 1 : 0,
     );
     const orderId = info.lastInsertRowid;
     const itemStmt = db.prepare(`

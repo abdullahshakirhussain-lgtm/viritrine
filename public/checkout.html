@@ -40,6 +40,7 @@ function Checkout() {
     line1: "", line2: "", city: "Colombo", postcode: "",
     delivery: "std", payment: "card",
     note: "", gift_wrap: false,
+    is_gift: false, gift_recipient: "", gift_message: "", gift_hide_prices: false,
     samples: [],
   });
 
@@ -226,12 +227,38 @@ function Checkout() {
             )}
 
             <section className="checkout-section">
-              <h3>Notes</h3>
-              <label className="toggle" style={{marginBottom:14}}>
-                <input type="checkbox" checked={form.gift_wrap} onChange={e => set("gift_wrap", e.target.checked)} />
-                Hand-wrap as a gift (complimentary)
+              <h3>Gifting</h3>
+              <label className="toggle" style={{marginBottom: form.is_gift ? 16 : 0}}>
+                <input type="checkbox" checked={form.is_gift} onChange={e => set("is_gift", e.target.checked)} />
+                This is a gift
               </label>
-              <div className="field">
+              {form.is_gift && (
+                <div style={{borderLeft:"2px solid var(--gold, #b08b4f)", paddingLeft:18, marginTop:4}}>
+                  <div className="field">
+                    <label>Who's it for? <span style={{color:"var(--ink-3)"}}>(optional)</span></label>
+                    <input className="input" value={form.gift_recipient} onChange={e => set("gift_recipient", e.target.value)} placeholder="Recipient's name" />
+                  </div>
+                  <div className="field">
+                    <label>A note on the card <span style={{color:"var(--ink-3)"}}>(we write it by hand)</span></label>
+                    <textarea value={form.gift_message} onChange={e => set("gift_message", e.target.value)} maxLength="600" placeholder="Happy birthday, from us both…"></textarea>
+                  </div>
+                  <label className="toggle" style={{marginBottom:12}}>
+                    <input type="checkbox" checked={form.gift_wrap} onChange={e => set("gift_wrap", e.target.checked)} />
+                    Hand-wrap it (complimentary)
+                  </label>
+                  <label className="toggle">
+                    <input type="checkbox" checked={form.gift_hide_prices} onChange={e => set("gift_hide_prices", e.target.checked)} />
+                    Include a gift receipt <span style={{color:"var(--ink-3)", marginLeft:4}}>— no prices in the box</span>
+                  </label>
+                </div>
+              )}
+              {!form.is_gift && (
+                <label className="toggle" style={{marginTop:14}}>
+                  <input type="checkbox" checked={form.gift_wrap} onChange={e => set("gift_wrap", e.target.checked)} />
+                  Hand-wrap as a gift (complimentary)
+                </label>
+              )}
+              <div className="field" style={{marginTop:18}}>
                 <label>Order note</label>
                 <textarea value={form.note} onChange={e => set("note", e.target.value)} placeholder="Anything we should know? (e.g. leave with concierge)"></textarea>
               </div>
