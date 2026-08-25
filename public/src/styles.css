@@ -1,6 +1,9 @@
 /* VITRINE — multi-brand beauty retailer
    Posh, editorial, minimal. Cream + wine + Ceylon teal + gold. */
 
+/* Cabinet fonts (used by [data-theme="cabinet"] storefront pages). */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,200..500;1,6..72,200..400&display=swap');
+
 :root {
   --bg:      #EFE6D2;
   --bg-2:    #E5DAC0;
@@ -63,6 +66,41 @@
   --gold-2:  #B89653;
   --blush:   #D7A39A;
 }
+
+/* ── "The Cabinet" — unifies the storefront with the homepage/PDP. Storefront
+   pages carry data-theme="cabinet"; admin stays on the default (ceylon) tokens. */
+[data-theme="cabinet"] {
+  --bg:      #FFFFFF;
+  --bg-2:    #F3F5F4;
+  --paper:   #FFFFFF;
+  --ink:     #101010;
+  --ink-2:   #33332E;
+  --ink-3:   #6E6E68;
+  --line:    rgba(16, 16, 16, 0.12);
+  --line-2:  rgba(16, 16, 16, 0.22);
+  --wine:    #5A1430;
+  --wine-2:  #470F26;
+  --teal:    #101010;   /* Cabinet has no teal — fold into ink */
+  /* Wine is the accent on light; a refined gold stays for The Key's dark cards
+     (var(--gold) is used as the on-dark accent, var(--gold-2) on light). */
+  --gold:    #C6A15B;
+  --gold-2:  #8A6B2E;
+  --blush:   #EEF2F1;
+
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-serif:   "Newsreader", Georgia, serif;
+  --font-sans:    "Newsreader", Georgia, serif;   /* editorial serif body */
+  --font-mono:    "IBM Plex Mono", ui-monospace, monospace;
+}
+/* Labels, nav and controls read as Plex Mono (the homepage's label voice). */
+[data-theme="cabinet"] .eyebrow,
+[data-theme="cabinet"] .nav-link,
+[data-theme="cabinet"] .btn-solid,
+[data-theme="cabinet"] .btn-ghost,
+[data-theme="cabinet"] .pill,
+[data-theme="cabinet"] .chip-toggle,
+[data-theme="cabinet"] .field label,
+[data-theme="cabinet"] label.eyebrow { font-family: var(--font-mono); }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }

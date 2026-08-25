@@ -796,7 +796,7 @@ function ShopPage() {
 
   // Tweak theme
   const tweakDefaults = /*EDITMODE-BEGIN*/{
-    "theme": "ceylon",
+    "theme": "cabinet",
     "shopName": "VITRINE",
     "shopTagline": "Beauty, Hand-Picked"
   }/*EDITMODE-END*/;

@@ -7,13 +7,14 @@
 //   - flash(msg): bottom toast for success/error feedback.
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "theme": "ceylon",
+  "theme": "cabinet",
   "showSideMarks": true,
   "shopName": "VITRINE",
   "shopTagline": "Beauty, Hand-Picked"
 }/*EDITMODE-END*/;
 
 const THEMES = [
+  { name: "cabinet",  label: "Cabinet",  swatch: ["#FFFFFF", "#5A1430", "#101010"] },
   { name: "ceylon",   label: "Ceylon",   swatch: ["#EFE6D2", "#6B1E3F", "#1F4538"] },
   { name: "noir",     label: "Midnight", swatch: ["#0E0907", "#C9456B", "#D9BD86"] },
   { name: "bordeaux", label: "Bordeaux", swatch: ["#2A0E1A", "#E0708C", "#F4E8DD"] },
