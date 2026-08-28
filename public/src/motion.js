@@ -146,12 +146,14 @@
   /* ── hero parallax (glass case + bottle drift) ─────────────────────────── */
   var caseEl = null;
   function findCase() { caseEl = document.querySelector('[data-vit-case="hero"]'); return caseEl; }
-  var px = 0, py = 0, tpx = 0, tpy = 0, prafPending = false;
+  var px = 0, py = 0, tpx = 0, tpy = 0, sy = 0, prafPending = false;
   function applyParallax() {
     prafPending = false;
     if (!caseEl && !findCase()) return;
     px += (tpx - px) * 0.08; py += (tpy - py) * 0.08;
-    caseEl.style.transform = "translate3d(" + px.toFixed(2) + "px," + py.toFixed(2) + "px,0) scale(1.03)";
+    // sy (scroll drift) is composed with the pointer offset; over the white
+    // cabinet any revealed edge is white, so the small gap is invisible.
+    caseEl.style.transform = "translate3d(" + px.toFixed(2) + "px," + (py + sy).toFixed(2) + "px,0) scale(1.05)";
     if (Math.abs(tpx - px) > 0.2 || Math.abs(tpy - py) > 0.2) schedule();
   }
   function schedule() { if (!prafPending) { prafPending = true; requestAnimationFrame(applyParallax); } }
@@ -162,4 +164,9 @@
       tpx = cx * 22; tpy = cy * 14; schedule();
     }, { passive: true });
   }
+  // Scroll-drift parallax — the mobile-native replacement for the mouse parallax
+  // (also adds depth on desktop). The glass case lags the page as you scroll.
+  window.addEventListener("scroll", function () {
+    sy = Math.min(window.scrollY * 0.08, 34); schedule();
+  }, { passive: true });
 })();

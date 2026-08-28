@@ -177,7 +177,7 @@ function Checkout() {
 
             <section className="checkout-section">
               <h3>Delivery</h3>
-              <div className="opts">
+              <div className="opts opts-seg">
                 <button type="button" className={"opt" + (form.delivery === "std" ? " active" : "")} onClick={() => set("delivery", "std")}>
                   <span className="name">Island Standard</span>
                   <span className="sub">2–4 business days</span>
@@ -193,7 +193,7 @@ function Checkout() {
 
             <section className="checkout-section">
               <h3>Payment</h3>
-              <div className="opts">
+              <div className="opts opts-seg">
                 <button type="button" className={"opt" + (form.payment === "card" ? " active" : "")} onClick={() => set("payment", "card")}>
                   <span className="name">Card</span>
                   <span className="sub">Visa · Mastercard · Amex</span>

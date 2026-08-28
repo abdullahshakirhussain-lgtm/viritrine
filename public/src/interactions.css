@@ -6,21 +6,44 @@
    ============================================================================ */
 
 /* ── selectable option cards (checkout delivery / payment / samples) ───────── */
-.opt { position: relative; overflow: hidden;
-  transition: transform .18s cubic-bezier(.2,.7,.2,1), background .18s ease, border-color .18s ease, box-shadow .2s ease; }
-.opt:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -16px rgba(16,16,16,0.45); }
-.opt:active { transform: translateY(0) scale(.99); }
-.opt.active { border-color: var(--wine); }
-/* wine accent bar draws down the left edge on select */
-.opt::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-  background: var(--wine); transform: scaleY(0); transform-origin: top;
-  transition: transform .3s cubic-bezier(.2,.8,.2,1); }
-.opt.active::before { transform: scaleY(1); }
-/* corner check springs in */
-.opt::after { content: "✓"; position: absolute; top: 8px; right: 12px; font-size: 12px; font-weight: 700;
-  color: var(--wine); opacity: 0; transform: scale(.3);
-  transition: opacity .18s ease, transform .34s cubic-bezier(.34,1.56,.64,1); }
-.opt.active::after { opacity: 1; transform: scale(1); }
+/* Liquid Glass, on the white cabinet. Single-select rows (.opts-seg) get one
+   frosted puck that glides between cards; multi-select (samples) and any stacked
+   mobile row get a per-card frosted lift. */
+.opt { position: relative; overflow: hidden; border-radius: 14px;
+  transition: transform .3s cubic-bezier(.2,.8,.2,1), background .3s ease, border-color .3s ease, box-shadow .3s ease; }
+.opt:active { transform: scale(.99); }
+
+/* default selected state — frosted lift (multi-select samples + mobile) */
+.opt.active { border-color: transparent; background: rgba(255,255,255,0.55);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 0 0 1px rgba(255,255,255,.65) inset, 0 0 0 1px var(--wine), 0 16px 30px -16px rgba(90,20,48,.5);
+  transform: translateY(-3px); }
+.opt.active::after { content: "✓"; position: absolute; top: 8px; right: 12px;
+  font-family: var(--font-display, Archivo); font-size: 12px; font-weight: 700; color: var(--wine);
+  animation: vitCheck .32s cubic-bezier(.34,1.56,.64,1); }
+
+/* single-select rows: a flex track with a gliding frosted-glass puck */
+.opts-seg { display: flex !important; gap: 0 !important; position: relative;
+  background: var(--glass, #EEF2F1); border: 1px solid var(--line); border-radius: 16px; padding: 5px; }
+.opts-seg .opt { flex: 1; border: 0 !important; border-radius: 12px; z-index: 2; }
+.opt-puck { position: absolute; top: 5px; bottom: 5px; left: 0; width: var(--pw, 0); z-index: 1; opacity: 0;
+  transform: translateX(var(--px, 0)); border-radius: 12px; background: rgba(255,255,255,0.62);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6); backdrop-filter: blur(14px) saturate(1.6);
+  box-shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 0 0 1px rgba(255,255,255,.6) inset, 0 10px 24px -12px rgba(16,16,16,.5);
+  transition: transform .5s cubic-bezier(.5,1.35,.4,1), width .5s cubic-bezier(.5,1.35,.4,1), opacity .3s ease; }
+.opt-puck::before { content: ""; position: absolute; left: 12%; right: 12%; top: 2px; height: 38%;
+  border-radius: 10px; background: linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,0)); }
+/* on desktop the puck IS the selection — the seg card itself stays plain */
+@media (min-width: 561px) {
+  .opts-seg .opt.active { background: transparent !important; box-shadow: none !important; transform: none;
+    -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .opts-seg .opt.active::after { display: none; }
+}
+/* stacked mobile: no horizontal puck — fall back to the frosted lift */
+@media (max-width: 560px) {
+  .opts-seg { flex-direction: column; }
+  .opt-puck { display: none; }
+}
 
 /* ── custom toggle checkbox (gift / hand-wrap / gift-receipt) ──────────────── */
 .toggle input { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; margin: 0;
@@ -50,6 +73,7 @@
 @keyframes vitRipple { to { transform: scale(2.4); opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .opt, .opt:hover, .btn-solid, .btn-ghost, .opt::before, .opt::after, .btn-solid span, .btn-ghost span { transition: none !important; transform: none !important; }
+  .opt, .btn-solid, .btn-ghost, .opt-puck, .btn-solid span, .btn-ghost span { transition: none !important; }
+  .opt.active { transform: none !important; }
   .vit-rip { display: none !important; }
 }
