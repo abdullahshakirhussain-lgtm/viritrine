@@ -43,3 +43,17 @@ body { background: #FFFFFF; color: #101010; -webkit-font-smoothing: antialiased;
   .vit-root *, .vit-root *::before, .vit-root *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
 /* Motion (reveal / entrance / cursor / parallax) lives in the shared src/motion.css. */
+
+/* ── mobile ────────────────────────────────────────────────────────────────── */
+.vit-burger { display: none; }
+@media (max-width: 780px) {
+  .vit-root .vit-nav-desktop { display: none !important; }
+  .vit-burger { display: inline-flex !important; }
+  /* sale ledger: drop original price + brand columns so rows fit a phone */
+  .vit-root .vit-row { grid-template-columns: 1fr auto 56px !important; }
+  .vit-root .vit-row > :nth-child(2), .vit-root .vit-row > :nth-child(3) { display: none !important; }
+}
+/* comfortable tap targets on touch */
+@media (hover: none) {
+  .vit-root .vit-navlink, .vit-root .vit-add, .vit-root .vit-bag { padding-top: 6px; padding-bottom: 6px; }
+}

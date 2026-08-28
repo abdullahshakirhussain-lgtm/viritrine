@@ -10,6 +10,7 @@ const V = {
   mono: "'IBM Plex Mono', ui-monospace, monospace",
 };
 const PAD = "var(--vit-pad)";
+const NAV_LINKS = [["SHOP", "#shelf"], ["NEW IN", "#arrivals"], ["SALE", "#sale"], ["BRANDS", "#maisons"], ["STORIES", "#journal"]];
 const money = (n) => (window.fmtLKR ? window.fmtLKR(n) : "LKR " + Number(n || 0).toLocaleString("en-US"));
 
 const HERO_FALLBACK = [
@@ -52,6 +53,7 @@ function Home() {
   const [ab, setAb] = React.useState(0);              // active brand index
   const [bag, setBag] = React.useState({ items: [], subtotal: 0, count: 0 });
   const [bagOpen, setBagOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const [toast, setToast] = React.useState(null);
   const [email, setEmail] = React.useState("");
   const [subscribed, setSubscribed] = React.useState(false);
@@ -139,15 +141,34 @@ function Home() {
       {/* header */}
       <header id="top" style={{ position: "sticky", top: 0, zIndex: 40, background: "rgba(255,255,255,0.94)", backdropFilter: "blur(8px)", borderBottom: "1px solid " + V.ink, padding: "14px " + PAD, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24 }}>
         <a href="#top" style={{ fontFamily: V.display, fontWeight: 800, fontSize: "clamp(15px,1.7vw,20px)", letterSpacing: "0.01em", lineHeight: 1 }}>VITRINE</a>
-        <nav style={{ display: "flex", flexWrap: "wrap", gap: "clamp(14px,2.2vw,34px)", fontFamily: V.mono, fontSize: 11, letterSpacing: "0.12em" }}>
-          <a className="vit-navlink" href="#shelf">SHOP</a>
-          <a className="vit-navlink" href="#arrivals">NEW IN</a>
-          <a className="vit-navlink" href="#sale">SALE</a>
-          <a className="vit-navlink" href="#maisons">BRANDS</a>
-          <a className="vit-navlink" href="#journal">STORIES</a>
+        <nav className="vit-nav-desktop" style={{ display: "flex", flexWrap: "wrap", gap: "clamp(14px,2.2vw,34px)", fontFamily: V.mono, fontSize: 11, letterSpacing: "0.12em" }}>
+          {NAV_LINKS.map(([t, href]) => <a key={href} className="vit-navlink" href={href}>{t}</a>)}
         </nav>
-        <button className="vit-bag" onClick={() => setBagOpen(true)} style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.12em", background: "none", border: "none", borderBottom: "1px solid " + V.ink, padding: "0 0 2px", cursor: "pointer", color: V.ink }}>BAG ({String(bag.count || 0).padStart(2, "0")})</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          <button className="vit-bag" onClick={() => setBagOpen(true)} style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.12em", background: "none", border: "none", borderBottom: "1px solid " + V.ink, padding: "0 0 2px", cursor: "pointer", color: V.ink }}>BAG ({String(bag.count || 0).padStart(2, "0")})</button>
+          <button className="vit-burger" aria-label="Menu" onClick={() => setMenuOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: V.ink }}>
+            <span style={{ display: "block", width: 22, height: 1.5, background: V.ink, marginBottom: 5 }}></span>
+            <span style={{ display: "block", width: 22, height: 1.5, background: V.ink }}></span>
+          </button>
+        </div>
       </header>
+
+      {/* mobile menu */}
+      {menuOpen && (
+        <div className="vit-mobile-menu" onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: V.paper, animation: "vitScrim 0.25s both", display: "flex", flexDirection: "column", padding: "18px " + PAD }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid " + V.ink, paddingBottom: 16 }}>
+            <span style={{ fontFamily: V.display, fontWeight: 800, fontSize: 20 }}>VITRINE</span>
+            <button aria-label="Close" onClick={() => setMenuOpen(false)} style={{ background: "none", border: "none", fontFamily: V.mono, fontSize: 12, letterSpacing: "0.14em", cursor: "pointer", color: V.ink }}>CLOSE ✕</button>
+          </div>
+          <nav style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: "clamp(24px,6vw,48px)" }}>
+            {NAV_LINKS.map(([t, href], i) => (
+              <a key={href} href={href} onClick={() => setMenuOpen(false)} style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(34px,10vw,54px)", letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1.08, borderBottom: "1px solid " + V.ruleSoft, padding: "14px 0" }}>{t}</a>
+            ))}
+            <a href="key.html" onClick={() => setMenuOpen(false)} style={{ fontFamily: V.mono, fontSize: 12, letterSpacing: "0.16em", color: V.wine, marginTop: 24 }}>THE KEY →</a>
+            <a href="account.html" onClick={() => setMenuOpen(false)} style={{ fontFamily: V.mono, fontSize: 12, letterSpacing: "0.16em", color: V.muted, marginTop: 12 }}>ACCOUNT →</a>
+          </nav>
+        </div>
+      )}
 
       {/* hero */}
       <section style={{ position: "relative", borderBottom: "1px solid " + V.ink, padding: "clamp(28px,4vw,56px) " + PAD + " 0" }}>
