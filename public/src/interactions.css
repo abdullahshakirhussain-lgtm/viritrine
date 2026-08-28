@@ -1,0 +1,55 @@
+/* ============================================================================
+   VITRINE — interaction layer. Premium selection / toggle / button motion + a
+   tap ripple (the ripple JS lives at the end of api.jsx, which every page loads).
+   Shared by the storefront (via @import in styles.css) and the Cabinet-native
+   pages (linked directly). Refined, not maximal; reduced-motion aware.
+   ============================================================================ */
+
+/* ── selectable option cards (checkout delivery / payment / samples) ───────── */
+.opt { position: relative; overflow: hidden;
+  transition: transform .18s cubic-bezier(.2,.7,.2,1), background .18s ease, border-color .18s ease, box-shadow .2s ease; }
+.opt:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -16px rgba(16,16,16,0.45); }
+.opt:active { transform: translateY(0) scale(.99); }
+.opt.active { border-color: var(--wine); }
+/* wine accent bar draws down the left edge on select */
+.opt::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--wine); transform: scaleY(0); transform-origin: top;
+  transition: transform .3s cubic-bezier(.2,.8,.2,1); }
+.opt.active::before { transform: scaleY(1); }
+/* corner check springs in */
+.opt::after { content: "✓"; position: absolute; top: 8px; right: 12px; font-size: 12px; font-weight: 700;
+  color: var(--wine); opacity: 0; transform: scale(.3);
+  transition: opacity .18s ease, transform .34s cubic-bezier(.34,1.56,.64,1); }
+.opt.active::after { opacity: 1; transform: scale(1); }
+
+/* ── custom toggle checkbox (gift / hand-wrap / gift-receipt) ──────────────── */
+.toggle input { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; margin: 0;
+  flex: 0 0 auto; border: 1.5px solid var(--line-2); border-radius: 4px; background: var(--paper);
+  position: relative; cursor: pointer; transition: background .2s ease, border-color .2s ease; }
+.toggle input:hover { border-color: var(--wine); }
+.toggle input:checked { background: var(--wine); border-color: var(--wine); }
+.toggle input:checked::after { content: ""; position: absolute; left: 5px; top: 1.5px;
+  width: 4px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg); animation: vitCheck .24s cubic-bezier(.2,.8,.2,1); }
+@keyframes vitCheck { from { opacity: 0; transform: rotate(45deg) scale(.3); } to { opacity: 1; transform: rotate(45deg) scale(1); } }
+
+/* ── buttons: ink→wine wash, arrow slide, press ────────────────────────────── */
+.btn-solid, .btn-ghost { position: relative; overflow: hidden;
+  transition: background .3s ease, color .3s ease, border-color .3s ease, transform .2s cubic-bezier(.2,.7,.2,1); }
+.btn-solid:hover { background: var(--wine); border-color: var(--wine); }
+.btn-solid:active, .btn-ghost:active { transform: scale(.985); }
+.btn-solid span, .btn-ghost span { display: inline-block; transition: transform .3s cubic-bezier(.2,.7,.2,1); }
+.btn-solid:hover span, .btn-ghost:hover span { transform: translateX(4px); }
+
+/* ── touch press feedback for the Cabinet text-buttons + nav (no hover on touch) */
+.vit-add:active, .po-add:active, .po-radd:active, .vit-navlink:active, .nav-link:active { opacity: .55; }
+
+/* ── ripple (spawned by the JS in api.jsx) ─────────────────────────────────── */
+.vit-rip { position: absolute; border-radius: 50%; background: rgba(90,20,48,0.18);
+  transform: scale(0); pointer-events: none; animation: vitRipple .55s ease-out forwards; }
+@keyframes vitRipple { to { transform: scale(2.4); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .opt, .opt:hover, .btn-solid, .btn-ghost, .opt::before, .opt::after, .btn-solid span, .btn-ghost span { transition: none !important; transform: none !important; }
+  .vit-rip { display: none !important; }
+}

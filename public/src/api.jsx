@@ -53,3 +53,30 @@ window.track = (type, data = {}) => {
     }
   } catch (e) { /* analytics must never break the page */ }
 };
+
+// ── Tap ripple (interaction layer; styles in src/interactions.css) ──────────
+// Delegated + idempotent so loading api.jsx on every page wires it everywhere.
+// pointerdown covers mouse and touch, so it also gives mobile its tap feedback.
+(function () {
+  if (window.__vitRipple) return; window.__vitRipple = true;
+  var reduce = false;
+  try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  var SEL = ".btn-solid,.btn-ghost,.opt,[data-ripple]";
+  document.addEventListener("pointerdown", function (e) {
+    if (reduce || !e.target.closest) return;
+    var t = e.target.closest(SEL);
+    if (!t || t.disabled) return;
+    var cs = getComputedStyle(t);
+    if (cs.position === "static") t.style.position = "relative";
+    if (cs.overflow !== "hidden") t.style.overflow = "hidden";
+    var r = t.getBoundingClientRect();
+    var size = Math.max(r.width, r.height);
+    var s = document.createElement("span");
+    s.className = "vit-rip";
+    s.style.width = s.style.height = size + "px";
+    s.style.left = (e.clientX - r.left - size / 2) + "px";
+    s.style.top = (e.clientY - r.top - size / 2) + "px";
+    t.appendChild(s);
+    setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 600);
+  }, { passive: true });
+})();

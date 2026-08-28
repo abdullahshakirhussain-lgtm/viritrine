@@ -3,6 +3,8 @@
 
 /* Cabinet fonts (used by [data-theme="cabinet"] storefront pages). */
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,200..500;1,6..72,200..400&display=swap');
+/* Premium interaction layer (selection / toggles / buttons / ripple). */
+@import url('interactions.css');
 
 :root {
   --bg:      #EFE6D2;
