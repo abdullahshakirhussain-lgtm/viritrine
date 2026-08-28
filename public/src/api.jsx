@@ -81,24 +81,3 @@ window.track = (type, data = {}) => {
   }, { passive: true });
 })();
 
-// ── Liquid-glass segmented puck (single-select .opts-seg rows) ──────────────
-// Positions a frosted puck over the active card; React updates .active, we
-// measure on the next frames. Falls back to per-card frost on stacked mobile.
-(function () {
-  if (window.__vitSeg) return; window.__vitSeg = true;
-  function place(seg) {
-    var p = seg.__puck;
-    if (!p) { p = document.createElement("div"); p.className = "opt-puck"; seg.insertBefore(p, seg.firstChild); seg.__puck = p; }
-    var a = seg.querySelector(".opt.active");
-    if (!a) { p.style.opacity = "0"; return; }
-    p.style.opacity = "1";
-    p.style.setProperty("--px", (a.offsetLeft - (seg.clientLeft || 0)) + "px");
-    p.style.setProperty("--pw", a.offsetWidth + "px");
-  }
-  function all() { var segs = document.querySelectorAll(".opts-seg"); for (var i = 0; i < segs.length; i++) place(segs[i]); }
-  document.addEventListener("click", function (e) {
-    if (e.target.closest && e.target.closest(".opts-seg")) requestAnimationFrame(function () { requestAnimationFrame(all); });
-  }, { passive: true });
-  window.addEventListener("resize", all);
-  [0, 150, 400, 900, 1500].forEach(function (t) { setTimeout(all, t); }); // catch React's async mount
-})();
