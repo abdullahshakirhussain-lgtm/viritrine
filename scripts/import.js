@@ -22,10 +22,17 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const SITES = [
   { source: "essentials.lk", base: "https://www.essentials.lk" },
   { source: "orionxoxo.lk",  base: "https://orionxoxo.lk" },
-  { source: "cosmetics.lk",  base: "https://cosmetics.lk" },
+  // cosmetics.lk blocks the aggregate /products.json (403) but leaves the
+  // per-product <url>.json open — so we walk its sitemaps instead.
+  { source: "cosmetics.lk",  base: "https://cosmetics.lk", mode: "sitemap" },
 ];
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const HEADERS = {
+  "User-Agent": UA,
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+};
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const slug = (s) => (s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "")
@@ -34,10 +41,41 @@ const stripHtml = (h) => (h || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, 
   .replace(/&amp;/gi, "&").replace(/&#?[a-z0-9]+;/gi, " ").replace(/\s+/g, " ").trim().slice(0, 1800);
 const parseSize = (t) => { const m = (t || "").match(/(\d+(?:\.\d+)?)\s?(ml|g|kg|l|oz|pcs|pieces|pack|tablets|caps|capsules|sheets)\b/i); return m ? m[0].replace(/\s+/g, "") : null; };
 
-async function fetchJson(url) {
-  const r = await fetch(url, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+async function fetchJson(url, referer) {
+  const h = { ...HEADERS, "Accept": "application/json" };
+  if (referer) h["Referer"] = referer;
+  const r = await fetch(url, { headers: h });
   if (!r.ok) throw new Error("HTTP " + r.status);
   return r.json();
+}
+
+async function fetchText(url, referer) {
+  const h = { ...HEADERS };
+  if (referer) h["Referer"] = referer;
+  const r = await fetch(url, { headers: h });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.text();
+}
+
+// Collect every /products/… URL from a store's sitemap index (following the
+// child product sitemaps, params and all).
+async function collectSitemapProductUrls(base) {
+  const idx = await fetchText(base + "/sitemap.xml", base + "/");
+  const children = [...idx.matchAll(/<loc>([^<]+)<\/loc>/g)]
+    .map(m => m[1].replace(/&amp;/g, "&"))
+    .filter(u => /products/i.test(u));
+  const urls = [];
+  for (const child of children) {
+    let xml;
+    try { xml = await fetchText(child, base + "/"); }
+    catch (e) { console.log("  sitemap child failed (" + e.message + ")"); continue; }
+    for (const m of xml.matchAll(/<loc>([^<]+)<\/loc>/g)) {
+      const u = m[1].replace(/&amp;/g, "&").split("?")[0];
+      if (/\/products\/[^/]+$/.test(u)) urls.push(u);
+    }
+    await sleep(120);
+  }
+  return [...new Set(urls)];
 }
 
 function ensureBrand(vendor) {
@@ -79,41 +117,77 @@ const insert = db.prepare(`INSERT INTO products
   (id,brand_key,name,category,sub,size,variant,copy,price,sale_price,off_pct,is_new,is_bestseller,is_active,stock,image,import_source,import_handle)
   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
 
-async function importSite(site, opts) {
-  console.log("\n== " + site.source + " ==");
-  let page = 1, total = 0, imported = 0, skipped = 0, imgs = 0;
+// Map one Shopify product object into a draft row. Returns "imported" | "dupe".
+async function importProduct(site, p, c) {
+  if (!p || !p.handle) return "dupe";
+  if (db.prepare("SELECT id FROM products WHERE import_source=? AND import_handle=?").get(site.source, p.handle)) return "dupe";
+  const v = (p.variants && p.variants[0]) || {};
+  const pm = priceMap(v);
+  const brandKey = ensureBrand(p.vendor);
+  const id = "imp-" + slug(site.source).slice(0, 4) + "-" + slug(p.handle).slice(0, 40) + "-" + crypto.randomBytes(2).toString("hex");
+  const image = (p.images && p.images[0]) ? await downloadImage(p.images[0].src, id) : null;
+  if (image) c.imgs++;
+  insert.run(
+    id, brandKey, p.title,
+    ((p.product_type || "").trim().toLowerCase() || "uncategorized"),
+    (p.product_type || null), parseSize(v.title) || parseSize(p.title), "jar",
+    stripHtml(p.body_html), pm.price, pm.sale, pm.off, 0, 0, 0 /* draft */,
+    (v.available === false ? 0 : 25), image, site.source, p.handle,
+  );
+  return "imported";
+}
+
+// Aggregate /products.json path (essentials.lk, orionxoxo.lk).
+async function importViaProductsJson(site, opts, c) {
+  let page = 1;
   while (true) {
     let data;
-    try { data = await fetchJson(site.base + "/products.json?limit=250&page=" + page); }
+    try { data = await fetchJson(site.base + "/products.json?limit=250&page=" + page, site.base + "/"); }
     catch (e) { console.log("  page " + page + " failed (" + e.message + ")" + (page === 1 ? " — this store may block products.json; skipping" : "")); break; }
     const prods = data.products || [];
     if (!prods.length) break;
     for (const p of prods) {
-      total++;
-      if (opts.limit && imported >= opts.limit) { console.log("\n  (dry limit reached)"); return { total, imported, skipped, imgs }; }
-      if (db.prepare("SELECT id FROM products WHERE import_source=? AND import_handle=?").get(site.source, p.handle)) { skipped++; continue; }
-      const v = (p.variants && p.variants[0]) || {};
-      const pm = priceMap(v);
-      const brandKey = ensureBrand(p.vendor);
-      const id = "imp-" + slug(site.source).slice(0, 4) + "-" + slug(p.handle).slice(0, 40) + "-" + crypto.randomBytes(2).toString("hex");
-      const image = (p.images && p.images[0]) ? await downloadImage(p.images[0].src, id) : null;
-      if (image) imgs++;
-      insert.run(
-        id, brandKey, p.title,
-        ((p.product_type || "").trim().toLowerCase() || "uncategorized"),
-        (p.product_type || null), parseSize(v.title) || parseSize(p.title), "jar",
-        stripHtml(p.body_html), pm.price, pm.sale, pm.off, 0, 0, 0 /* draft */,
-        (v.available ? 25 : 0), image, site.source, p.handle,
-      );
-      imported++;
-      process.stdout.write(imported % 10 === 0 ? "" + imported : ".");
+      c.total++;
+      if (opts.limit && c.imported >= opts.limit) { console.log("\n  (dry limit reached)"); return; }
+      const r = await importProduct(site, p, c);
+      if (r === "dupe") { c.skipped++; continue; }
+      c.imported++;
+      process.stdout.write(c.imported % 10 === 0 ? "" + c.imported : ".");
       await sleep(120); // be a polite guest
     }
     if (prods.length < 250) break;
     page++;
   }
-  console.log("\n  fetched " + total + " · imported " + imported + " · skipped(dupe) " + skipped + " · images " + imgs);
-  return { total, imported, skipped, imgs };
+}
+
+// Sitemap-walk path (cosmetics.lk blocks the aggregate feed).
+async function importViaSitemap(site, opts, c) {
+  const urls = await collectSitemapProductUrls(site.base);
+  console.log("  " + urls.length + " product URLs from sitemap");
+  for (const url of urls) {
+    c.total++;
+    if (opts.limit && c.imported >= opts.limit) { console.log("\n  (dry limit reached)"); return; }
+    // Skip the network round-trip entirely if we already have this handle.
+    const handle = url.replace(/\/$/, "").split("/products/")[1];
+    if (handle && db.prepare("SELECT id FROM products WHERE import_source=? AND import_handle=?").get(site.source, handle)) { c.skipped++; continue; }
+    let p;
+    try { p = (await fetchJson(url + ".json", site.base + "/")).product; }
+    catch (e) { c.skipped++; continue; }
+    const r = await importProduct(site, p, c);
+    if (r === "dupe") { c.skipped++; continue; }
+    c.imported++;
+    process.stdout.write(c.imported % 10 === 0 ? "" + c.imported : ".");
+    await sleep(120); // be a polite guest
+  }
+}
+
+async function importSite(site, opts) {
+  console.log("\n== " + site.source + " ==");
+  const c = { total: 0, imported: 0, skipped: 0, imgs: 0 };
+  if (site.mode === "sitemap") await importViaSitemap(site, opts, c);
+  else await importViaProductsJson(site, opts, c);
+  console.log("\n  fetched " + c.total + " · imported " + c.imported + " · skipped(dupe) " + c.skipped + " · images " + c.imgs);
+  return c;
 }
 
 (async () => {

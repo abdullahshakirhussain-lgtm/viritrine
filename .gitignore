@@ -6,3 +6,8 @@ server/data/*.db-journal
 
 server/data/*.db-shm
 server/data/*.db-wal
+
+# Competitor import artifacts — local-only drafts (pair with the gitignored DB).
+# These are the competitors' copyrighted images; never commit/publish them.
+server/data/uploads/products/imp-*
+scratch_*.log
