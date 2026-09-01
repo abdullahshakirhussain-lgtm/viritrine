@@ -32,7 +32,6 @@ function Checkout() {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr]   = React.useState("");
   const [placing, setPlacing] = React.useState(false);
-  const [sampleOptions, setSampleOptions] = React.useState([]);
   const [settings, setSettings] = React.useState({});
 
   const [form, setForm] = React.useState({
@@ -41,13 +40,11 @@ function Checkout() {
     delivery: "std", payment: "card",
     note: "", gift_wrap: false,
     is_gift: false, gift_recipient: "", gift_message: "", gift_hide_prices: false,
-    samples: [],
   });
 
   React.useEffect(() => {
     window.api.get("/api/settings").then(s => {
       setSettings(s);
-      setSampleOptions(Array.isArray(s["checkout.samples"]) ? s["checkout.samples"] : []);
     }).catch(() => {});
     Promise.all([
       window.api.get("/api/cart"),
@@ -70,13 +67,6 @@ function Checkout() {
   }, []);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const toggleSample = (s) => {
-    setForm(f => {
-      const has = f.samples.includes(s);
-      const next = has ? f.samples.filter(x => x !== s) : (f.samples.length < 3 ? [...f.samples, s] : f.samples);
-      return { ...f, samples: next };
-    });
-  };
 
   const sub = cart.subtotal || 0;
   const freeOver = Number(settings["shipping.free_over_lkr"] ?? 25000);
@@ -212,19 +202,6 @@ function Checkout() {
               </div>
               <p style={{marginTop:10,fontSize:12,color:"var(--ink-3)"}}>You'll receive a secure payment link by email once your order is placed.</p>
             </section>
-
-            {sampleOptions.length > 0 && (
-              <section className="checkout-section">
-                <h3>Free samples <span style={{fontSize:12,color:"var(--ink-3)",fontFamily:"var(--font-sans)",letterSpacing:0}}>(pick up to 3)</span></h3>
-                <div className="opts" style={{gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))"}}>
-                  {sampleOptions.map(s => (
-                    <button type="button" key={s} className={"opt" + (form.samples.includes(s) ? " active" : "")} onClick={() => toggleSample(s)}>
-                      <span className="name">{s}</span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
 
             <section className="checkout-section">
               <h3>Gifting</h3>
