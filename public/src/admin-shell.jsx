@@ -17,6 +17,7 @@ function AdminShell({ active, title, eyebrow, actions, children }) {
           {link("admin-sales.html",        "Sales",         "sales")}
           <div className="sect">Catalogue</div>
           {link("admin-products.html",     "Products",      "products")}
+          {link("admin-imports.html",      "Imports",       "imports")}
           {link("admin-brands.html",       "Brands",        "brands")}
           {link("admin-categories.html",   "Categories",    "categories")}
           <div className="sect">Storefront</div>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en" data-theme="ceylon">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Imports — VITRINE Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="src/styles.css" />
+<link rel="stylesheet" href="src/pages.css" />
+<link rel="stylesheet" href="src/admin.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="src/api.jsx"></script>
+<script type="text/babel" src="src/admin-shell.jsx"></script>
+
+<script type="text/babel">
+// Competitor import review. Products imported by scripts/import.js land here as
+// drafts (is_active=0). Publish the keepers, delete the rest — and replace the
+// borrowed image/copy (via Edit) before publishing.
+const money = (n) => window.adminFmtMoney(n);
+
+function Imports() {
+  const [data, setData] = React.useState(null);
+  const load = () => window.api.get("/api/admin/imports").then(setData);
+  React.useEffect(() => { load(); }, []);
+
+  const publish = async (ids) => { if (!ids.length) return; await window.api.post("/api/admin/imports/publish", { ids }); load(); };
+  const remove = async (ids, label) => { if (!ids.length) return; if (!adminConfirm("Delete " + (label || (ids.length + " item(s)")) + "? This removes the draft and its downloaded image.")) return; await window.api.post("/api/admin/imports/delete", { ids }); load(); };
+
+  return (
+    <AdminShell active="imports" eyebrow="Competitor seed → drafts" title={<>Import <em>review</em></>}>
+      <div style={{ background: "var(--bg-2)", border: "1px solid var(--line)", padding: "14px 16px", fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
+        Drafts pulled from competitor Shopify stores. They're <b>unpublished</b> until you publish them.
+        The images and descriptions are the competitor's — <b>open Edit and replace them with your own before publishing</b>.
+        To fetch (or re-fetch) products, run <code>node scripts/import.js</code> from the project — re-runs skip anything already imported.
+      </div>
+
+      {data === null ? <p>Loading…</p> :
+       data.total === 0 ? <div className="empty-admin"><h3>Nothing imported yet</h3><p>Run <code>node scripts/import.js</code> to pull competitor products into drafts.</p></div> :
+        data.sources.map(src => {
+          const draftIds = src.items.filter(i => !i.is_active).map(i => i.id);
+          return (
+            <section className="form-section" key={src.source}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 12 }}>
+                <h3 style={{ margin: 0 }}>{src.source} <span style={{ fontSize: 13, fontWeight: 400, color: "var(--ink-3)" }}>· {src.drafts} draft{src.drafts === 1 ? "" : "s"}{src.published ? ", " + src.published + " published" : ""}</span></h3>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn-solid" disabled={!draftIds.length} onClick={() => publish(draftIds)}>Publish all {draftIds.length} drafts</button>
+                  <button className="danger" disabled={!src.items.length} onClick={() => remove(src.items.map(i => i.id), src.source + " (" + src.items.length + ")")}>Delete all</button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 14, marginTop: 18 }}>
+                {src.items.map(p => (
+                  <div key={p.id} style={{ border: "1px solid var(--line)", background: "var(--paper)", display: "flex", flexDirection: "column", opacity: p.is_active ? 0.6 : 1 }}>
+                    <div style={{ height: 150, background: "var(--bg-2)", position: "relative", overflow: "hidden" }}>
+                      {p.image ? <img src={p.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--ink-3)", fontSize: 12 }}>no image</div>}
+                      {p.is_active ? <span style={{ position: "absolute", top: 8, left: 8, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", background: "var(--teal)", color: "#fff", padding: "3px 8px" }}>Published</span> : null}
+                      {p.stock === 0 ? <span style={{ position: "absolute", top: 8, right: 8, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", background: "var(--wine)", color: "#fff", padding: "3px 8px" }}>OOS</span> : null}
+                    </div>
+                    <div style={{ padding: "12px 13px", display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                      <div style={{ fontSize: 10.5, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--ink-3)" }}>{p.brand_name || p.brand_key}</div>
+                      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.3 }}>{p.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{[p.category, p.size].filter(Boolean).join(" · ")}</div>
+                      <div style={{ fontSize: 13, marginTop: 2 }}>
+                        {p.sale_price ? <><b style={{ color: "var(--wine)" }}>{money(p.sale_price)}</b> <span style={{ color: "var(--ink-3)", textDecoration: "line-through", fontSize: 11 }}>{money(p.price)}</span> <span style={{ fontSize: 11, color: "var(--ink-3)" }}>−{p.off_pct}%</span></> : <b>{money(p.price)}</b>}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginTop: "auto", paddingTop: 10 }}>
+                        {!p.is_active && <button className="btn-solid" style={{ padding: "7px 12px", fontSize: 11 }} onClick={() => publish([p.id])}>Publish</button>}
+                        <a className="btn-ghost" style={{ padding: "7px 12px", fontSize: 11 }} href={"admin-product-edit.html?id=" + encodeURIComponent(p.id)}>Edit</a>
+                        <button className="danger" style={{ padding: "7px 10px", fontSize: 11, marginLeft: "auto" }} onClick={() => remove([p.id], p.name)}>✕</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+    </AdminShell>
+  );
+}
+
+mountAdmin(Imports);
+</script>
+</body>
+</html>

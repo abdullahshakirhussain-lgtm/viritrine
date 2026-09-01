@@ -361,6 +361,9 @@ ensureColumn("products", "meta_desc",         "meta_desc TEXT");    // AI-drafte
 // The Key (premium) product gating:
 ensureColumn("products", "members_only",       "members_only INTEGER DEFAULT 0");  // 1 = premium members only, always
 ensureColumn("products", "early_access_until", "early_access_until INTEGER");       // epoch s; premium-only until then, public after
+// Competitor import (one-time seed → drafts): source + handle for de-dupe.
+ensureColumn("products", "import_source",       "import_source TEXT");   // e.g. essentials.lk (NULL = not imported)
+ensureColumn("products", "import_handle",       "import_handle TEXT");   // the source's product handle
 ensureColumn("brands",   "image",            "image TEXT");
 ensureColumn("users",    "tier",             "tier TEXT DEFAULT 'standard'"); // standard | premium
 ensureColumn("users",    "tier_since",        "tier_since INTEGER");

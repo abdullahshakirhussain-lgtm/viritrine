@@ -1519,6 +1519,45 @@ app.delete("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Competitor import review (drafts from scripts/import.js) ────────────────
+app.get("/api/admin/imports", requireAuth, requireAdmin, (_req, res) => {
+  const rows = db.prepare(`
+    SELECT p.id, p.name, p.brand_key, b.name AS brand_name, p.category, p.size,
+           p.price, p.sale_price, p.off_pct, p.stock, p.image, p.copy,
+           p.is_active, p.import_source, p.import_handle, p.created_at
+    FROM products p LEFT JOIN brands b ON b.key = p.brand_key
+    WHERE p.import_source IS NOT NULL
+    ORDER BY p.is_active ASC, p.import_source, p.created_at DESC
+  `).all();
+  const bySource = {};
+  rows.forEach(r => { (bySource[r.import_source] ||= { source: r.import_source, drafts: 0, published: 0, items: [] });
+    bySource[r.import_source].items.push(r);
+    if (r.is_active) bySource[r.import_source].published++; else bySource[r.import_source].drafts++; });
+  res.json({ sources: Object.values(bySource), total: rows.length });
+});
+
+// Bulk publish (set is_active=1) imported drafts.
+app.post("/api/admin/imports/publish", requireAuth, requireAdmin, (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const stmt = db.prepare("UPDATE products SET is_active=1 WHERE id=? AND import_source IS NOT NULL");
+  let n = 0; db.transaction(() => ids.forEach(id => { n += stmt.run(id).changes; }))();
+  res.json({ ok: true, published: n });
+});
+
+// Bulk delete imported products (removes their downloaded images too).
+app.post("/api/admin/imports/delete", requireAuth, requireAdmin, (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  db.transaction(() => ids.forEach(id => {
+    const p = db.prepare("SELECT image FROM products WHERE id=? AND import_source IS NOT NULL").get(id);
+    if (!p) return;
+    if (db.prepare("SELECT 1 FROM order_items WHERE product_id=?").get(id)) return; // keep ordered items
+    db.prepare("DELETE FROM cart_items WHERE product_id=?").run(id);
+    if (p.image) { const f = path.join(UPLOAD_DIR, p.image.replace(/^\/uploads\//, "")); try { fs.existsSync(f) && fs.unlinkSync(f); } catch {} }
+    db.prepare("DELETE FROM products WHERE id=?").run(id);
+  }))();
+  res.json({ ok: true });
+});
+
 // Image upload for products + brands. URL param :kind = 'products' | 'brands'
 app.post("/api/admin/upload/:kind/:id", uploadLimit, requireAuth, requireAdmin, (req, res, next) => {
   if (!["products", "brands"].includes(req.params.kind)) return res.status(400).json({ error: "Invalid kind" });
