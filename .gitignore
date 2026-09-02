@@ -11,3 +11,8 @@ server/data/*.db-wal
 # These are the competitors' copyrighted images; never commit/publish them.
 server/data/uploads/products/imp-*
 scratch_*.log
+
+# Compiled from public/src/**/*.jsx by scripts/build.js (built on deploy).
+# motion.js is a hand-written ES module, not build output — keep it tracked.
+public/src/**/*.js
+!public/src/motion.js
