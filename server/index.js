@@ -2302,21 +2302,31 @@ const orgJsonLd = (req) => {
   const ig       = s["site.instagram"];  const pi = s["site.pinterest"];
   const sameAs   = [ig, pi].filter(Boolean);
   const ogImg    = s["seo.og_image"] || "";
+  // Optional local-SEO fields — populated only when the owner sets them in
+  // settings (site.geo_lat/geo_lng, site.hours "Mo-Su 09:00-18:00", site.price_range).
+  const lat = s["site.geo_lat"], lng = s["site.geo_lng"];
+  const hours = s["site.hours"];
   return {
     "@context": "https://schema.org",
-    "@type": "Store",
+    "@type": "HealthAndBeautyBusiness",
+    "@id": absoluteUrl(req, "/") + "#store",
     "name": siteName,
     "url": absoluteUrl(req, "/"),
     "description": s["seo.description"] || "",
     "image": ogImg ? absoluteUrl(req, ogImg) : undefined,
     "telephone": phone || undefined,
     "email": email || undefined,
+    "priceRange": s["site.price_range"] || "$$",
+    "areaServed": { "@type": "Country", "name": "Sri Lanka" },
+    "currenciesAccepted": "LKR",
     "address": (addr1 || addr2) ? {
       "@type": "PostalAddress",
       "streetAddress": addr1,
       "addressLocality": addr2,
       "addressCountry": "LK",
     } : undefined,
+    "geo": (lat && lng) ? { "@type": "GeoCoordinates", "latitude": lat, "longitude": lng } : undefined,
+    "openingHours": hours || undefined,
     "sameAs": sameAs.length ? sameAs : undefined,
   };
 };
