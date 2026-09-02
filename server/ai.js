@@ -6,17 +6,31 @@
 // rest of the admin keeps working. Never throws provider internals at the route.
 //
 // Env:
-//   AI_PROVIDER        openai (default) | anthropic
+//   AI_PROVIDER        openai (default) | anthropic | deepseek
 //   OPENAI_API_KEY     + optional OPENAI_MODEL     (default gpt-5.6-luna)
 //   ANTHROPIC_API_KEY  + optional ANTHROPIC_MODEL  (default claude-sonnet-5)
+//   DEEPSEEK_API_KEY   + optional DEEPSEEK_MODEL   (default deepseek-chat)
+// NOTE: DeepSeek is OpenAI-compatible but TEXT-ONLY (no vision), so it powers the
+// copy rewriter but NOT the photo cataloguer (use openai/anthropic for photos).
 
 const PROVIDER = (process.env.AI_PROVIDER || "openai").toLowerCase();
 const OPENAI_MODEL    = process.env.OPENAI_MODEL    || "gpt-5.6-luna";
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+const DEEPSEEK_MODEL  = process.env.DEEPSEEK_MODEL  || "deepseek-chat";
 
 const aiConfigured =
   PROVIDER === "anthropic" ? !!process.env.ANTHROPIC_API_KEY
-                           : !!process.env.OPENAI_API_KEY;
+  : PROVIDER === "deepseek" ? !!process.env.DEEPSEEK_API_KEY
+  : !!process.env.OPENAI_API_KEY;
+
+// An OpenAI-SDK client pointed at the right backend (DeepSeek is OpenAI-compatible
+// via a custom baseURL). Returns { client, model }.
+function openaiCompatClient() {
+  const OpenAI = require("openai").OpenAI || require("openai");
+  if (PROVIDER === "deepseek")
+    return { client: new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: "https://api.deepseek.com" }), model: DEEPSEEK_MODEL };
+  return { client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), model: OPENAI_MODEL };
+}
 
 // The single JSON contract both backends return. Every field is required (empty
 // string / empty array when unknown) so OpenAI strict structured outputs is happy.
@@ -106,7 +120,49 @@ async function viaAnthropic({ base64, mimeType, taxonomy }) {
 // a friendly message. Callers must check aiConfigured first.
 async function describeProductFromImage(args) {
   if (PROVIDER === "anthropic") return viaAnthropic(args);
+  if (PROVIDER === "deepseek") throw new Error("DeepSeek has no vision — use openai/anthropic for photo cataloguing.");
   return viaOpenAI(args);
 }
 
-module.exports = { describeProductFromImage, aiConfigured, AI_PROVIDER: PROVIDER };
+// ── Copy rewrite (TEXT only — works on openai/deepseek/anthropic) ───────────
+// Turns a product's known facts (and optionally the borrowed source copy, used
+// for facts only) into ORIGINAL boutique copy + SEO title/description. This is
+// how imported drafts shed the competitors' verbatim (duplicate) text.
+function buildRewritePrompt(p) {
+  return [
+    "You write original product copy for VITRINE, a Colombo (Sri Lanka) multi-brand beauty boutique.",
+    "Write a fresh description in YOUR OWN words — never copy the source text. Voice: warm, precise, premium editorial. 2–3 sentences, ~40–60 words. No prices, no invented claims, no medical/therapeutic promises.",
+    "Also write an SEO title (~60 chars, front-loaded with the product + brand) and a meta description (~150 chars). Audience: shoppers in Sri Lanka.",
+    "",
+    `Product: ${p.name || ""}${p.italic ? " " + p.italic : ""}`,
+    `Brand: ${p.brand || "(unbranded)"}`,
+    `Category: ${p.category || "skincare"}`,
+    p.size ? `Size: ${p.size}` : "",
+    p.source ? `Source text (FACTS ONLY — reword completely, do not reuse phrasing): ${String(p.source).slice(0, 700)}` : "",
+    "",
+    'Return ONLY JSON: {"copy":"...","meta_title":"...","meta_desc":"..."}',
+  ].filter(Boolean).join("\n");
+}
+
+async function rewriteProductCopy(p) {
+  if (PROVIDER === "anthropic") {
+    const Anthropic = require("@anthropic-ai/sdk").Anthropic || require("@anthropic-ai/sdk");
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const res = await client.messages.create({
+      model: ANTHROPIC_MODEL, max_tokens: 700,
+      messages: [{ role: "user", content: buildRewritePrompt(p) + "\n\nRespond with the JSON object only." }],
+    });
+    const t = (res.content || []).find(b => b.type === "text")?.text || "{}";
+    return JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1));
+  }
+  const { client, model } = openaiCompatClient();
+  const res = await client.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: buildRewritePrompt(p) }],
+    response_format: { type: "json_object" },
+    temperature: 0.7,
+  });
+  return JSON.parse(res.choices[0].message.content);
+}
+
+module.exports = { describeProductFromImage, rewriteProductCopy, aiConfigured, AI_PROVIDER: PROVIDER };
