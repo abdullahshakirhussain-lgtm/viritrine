@@ -1,7 +1,8 @@
 /* VITRINE homepage — "The Cabinet" (Claude Design), re-implemented in the repo's
    React and wired to the real APIs (settings, hero-slides, editorial, new-arrivals,
    sale, brands, journal, cart) + the membership page. Self-contained (own header /
-   footer / bag drawer). The 3D hero bottle comes from src/bottle.js (self-mounts). */
+   footer / bag drawer). The hero is a full-bleed cinematic clip reel (HeroStage);
+   clips + posters are attached per hero-slide in the admin. */
 
 const V = {
   paper: "#FFFFFF", ink: "#101010", wine: "#5A1430", glass: "#EEF2F1",
@@ -41,6 +42,103 @@ function Tile({ p, onAdd, h }) {
   );
 }
 
+// Device flags read once: reduced-motion or Save-Data → poster only, no autoplay.
+function useMediaFlags() {
+  return React.useState(() => {
+    let reduced = false, saveData = false;
+    try { reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    try { saveData = !!(navigator.connection && navigator.connection.saveData); } catch (e) {}
+    return { reduced, saveData };
+  })[0];
+}
+
+// The inert "glass case" gradient — the visual when a slide has no clip or poster.
+function CaseGradient() {
+  return (
+    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(116deg,#FCFDFD,#E7ECEB 46%,#FAFBFB)" }}>
+      <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "rgba(16,16,16,0.05)" }}></div>
+      <div style={{ position: "absolute", top: "-20%", bottom: "-20%", left: "-30%", right: "-30%", background: "linear-gradient(104deg,transparent 36%,rgba(255,255,255,0.9) 46%,rgba(255,255,255,0.2) 53%,transparent 62%)", animation: "vitGlint 11s cubic-bezier(0.5,0,0.5,1) infinite" }}></div>
+    </div>
+  );
+}
+
+/* Full-bleed cinematic hero player. Double-buffered: two <video> layers cross-fade,
+   and only the active clip + the preloaded next clip are ever loaded (never all 10).
+   Each clip plays once; on `ended` (or a backstop timer for poster-only slides) it
+   calls onEnded so the parent advances. Under reduced-motion / Save-Data it shows
+   posters only and advances on a timer. */
+function HeroStage({ slides, idx, onEnded }) {
+  const n = slides.length;
+  const { reduced, saveData } = useMediaFlags();
+  const staticOnly = reduced || saveData;
+  const refs = [React.useRef(null), React.useRef(null)];
+  const [top, setTop] = React.useState(0);
+  const [slot, setSlot] = React.useState(() => [idx, n > 1 ? (idx + 1) % n : idx]);
+
+  // React to the parent's idx: show the requested slide (already buffered as "next"
+  // when possible), and preload the new upcoming clip into the hidden buffer.
+  React.useEffect(() => {
+    setSlot(prev => {
+      const upcoming = n > 1 ? (idx + 1) % n : idx;
+      const b = prev.indexOf(idx);
+      if (b !== -1) {                 // requested slide is the preloaded buffer
+        setTop(b);
+        const ns = [...prev]; ns[b ^ 1] = upcoming; return ns;
+      }
+      const other = top ^ 1;          // manual jump to an unbuffered slide
+      const ns = [...prev]; ns[other] = idx; ns[top] = upcoming;
+      setTop(other); return ns;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx]);
+
+  // Play the top buffer from the start; pause the other.
+  React.useEffect(() => {
+    refs.forEach((r, b) => {
+      const v = r.current; if (!v) return;
+      if (b === top && !staticOnly) {
+        try { v.currentTime = 0; } catch (e) {}
+        const p = v.play(); if (p && p.catch) p.catch(() => {});
+      } else { try { v.pause(); } catch (e) {} }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [top, slot, staticOnly]);
+
+  // Advance: rely on the clip's own `ended`, with a backstop timer that also drives
+  // poster-only slides. Single-slide heroes loop and never advance.
+  React.useEffect(() => {
+    if (n <= 1) return;
+    const s = slides[slot[top]] || {};
+    const hasVideo = !!s.video && !staticOnly;
+    const t = setTimeout(onEnded, hasVideo ? 12000 : 6000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [top, slot, staticOnly]);
+
+  return (
+    <div data-vit-case="hero" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+      <div data-vit-hero-zoom style={{ position: "absolute", inset: 0, willChange: "transform" }}>
+        {[0, 1].map(b => {
+          const s = slides[slot[b]] || {};
+          const isTop = b === top;
+          const useVideo = s.video && !staticOnly;
+          return (
+            <div key={b} style={{ position: "absolute", inset: 0, opacity: isTop ? 1 : 0, transition: "opacity 0.9s ease" }}>
+              {useVideo
+                ? <video ref={refs[b]} src={s.video} poster={s.poster || undefined} muted playsInline preload="auto" loop={n <= 1}
+                    onEnded={() => { if (isTop && n > 1) onEnded(); }}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                : (s.poster
+                    ? <img src={s.poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    : <CaseGradient />)}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Home() {
   const [settings, setSettings] = React.useState({});
   const [slides, setSlides] = React.useState(null);
@@ -73,6 +171,8 @@ function Home() {
         href: p.customHref || (p.id ? "/product/" + p.id : "#shelf"),
         objectLine: p.id ? [p.name, p.size, p.brandLoc].filter(Boolean).join(" · ") : "",
         objectPrice: p.id ? money(p.sale || p.price) : "",
+        video: p.customVideo || null,
+        poster: p.customPoster || null,
         id: p.id,
       })));
     }).catch(() => setSlides(HERO_FALLBACK));
@@ -87,10 +187,10 @@ function Home() {
     return () => window.removeEventListener("cart:changed", onCart);
   }, []);
 
-  React.useEffect(() => {
-    if (!slides || slides.length < 2) return;
-    const t = setInterval(() => setIdx(i => (i + 1) % slides.length), 6000);
-    return () => clearInterval(t);
+  // Hero advancement is driven by HeroStage (a clip ends, or a poster-only slide's
+  // timer fires) via onEnded → next slide. No standalone interval here.
+  const advanceHero = React.useCallback(() => {
+    setIdx(i => (slides && slides.length ? (i + 1) % slides.length : 0));
   }, [slides]);
 
   const addToBag = async (p) => {
@@ -170,37 +270,30 @@ function Home() {
         </div>
       )}
 
-      {/* hero */}
-      <section style={{ position: "relative", borderBottom: "1px solid " + V.ink, padding: "clamp(28px,4vw,56px) " + PAD + " 0" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "clamp(24px,4vw,56px)" }}>
-          <div style={{ flex: "1 1 460px", minWidth: "min(100%,340px)", paddingBottom: "clamp(28px,4vw,54px)" }}>
-            <div style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.16em", color: V.wine, marginBottom: "clamp(18px,3vw,34px)" }}>{slide.eyebrow}</div>
-            <h1 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(52px,9.2vw,138px)", lineHeight: 0.83, letterSpacing: "-0.042em", margin: 0, textTransform: "uppercase" }}>{slide.title}</h1>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(20px,3vw,48px)", marginTop: "clamp(22px,3vw,40px)", alignItems: "flex-end" }}>
-              <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: "clamp(16px,1.5vw,21px)", lineHeight: 1.42, margin: 0, maxWidth: "34ch", color: "#33332E" }}>{slide.dek}</p>
-              <a href={slide.href || "#shelf"} style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.14em", borderBottom: "1px solid " + V.ink, paddingBottom: 4, whiteSpace: "nowrap" }}>{slide.cta} →</a>
-            </div>
-            <div style={{ display: "flex", gap: 14, marginTop: "clamp(26px,4vw,46px)", alignItems: "center" }}>
-              {slides.map((s, i) => (
-                <button key={i} onClick={() => setIdx(i)} style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.1em", background: "none", border: "none", cursor: "pointer", padding: 0, color: i === idx ? V.ink : V.muted, borderBottom: "1px solid " + (i === idx ? V.ink : "transparent") }}>{String(i + 1).padStart(2, "0")}</button>
-              ))}
+      {/* hero — full-bleed cinematic clip reel */}
+      <section data-vit-hero style={{ position: "relative", borderBottom: "1px solid " + V.ink, height: "clamp(560px,86vh,920px)", overflow: "hidden", background: V.ink }}>
+        <HeroStage slides={slides} idx={idx} onEnded={advanceHero} />
+
+        {/* legibility scrim — darkest at the foot where the copy sits */}
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(0deg,rgba(16,16,16,0.68) 0%,rgba(16,16,16,0.10) 44%,rgba(16,16,16,0.30) 100%)" }} data-vit-hero-scrim></div>
+
+        {/* overlaid copy + numbered nav */}
+        <div data-vit-hero-copy style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "0 " + PAD + " clamp(30px,4.5vw,68px)", display: "flex", flexWrap: "wrap", gap: "clamp(20px,3vw,44px)", alignItems: "flex-end", justifyContent: "space-between", willChange: "transform,opacity" }}>
+          <div style={{ flex: "1 1 460px", maxWidth: 780 }}>
+            <div style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.2em", color: "#E7C9D3", marginBottom: "clamp(12px,1.8vw,20px)" }}>{slide.eyebrow}</div>
+            <h1 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(46px,8vw,120px)", lineHeight: 0.85, letterSpacing: "-0.042em", margin: 0, textTransform: "uppercase", color: "#FBFBFA", textShadow: "0 2px 46px rgba(0,0,0,0.4)" }}>{slide.title}</h1>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(16px,2.4vw,40px)", marginTop: "clamp(16px,2.4vw,30px)", alignItems: "flex-end" }}>
+              <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: "clamp(15px,1.4vw,20px)", lineHeight: 1.42, margin: 0, maxWidth: "40ch", color: "rgba(255,255,255,0.85)" }}>{slide.dek}</p>
+              <a href={slide.href || "#shelf"} style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.14em", borderBottom: "1px solid rgba(255,255,255,0.9)", paddingBottom: 4, whiteSpace: "nowrap", color: "#fff" }}>{slide.cta} →</a>
             </div>
           </div>
-
-          <div style={{ flex: "1 1 380px", minWidth: "min(100%,300px)", position: "relative", height: "clamp(340px,46vw,580px)" }}>
-            <div data-vit-case="hero" style={{ position: "absolute", inset: 0, overflow: "hidden", border: "1px solid " + V.rule, borderBottom: "none", background: "linear-gradient(116deg,rgba(255,255,255,0.96),rgba(238,242,241,0.92) 46%,rgba(252,253,253,0.98))", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -70px 90px -70px rgba(16,16,16,0.14)" }}>
-              <div style={{ position: "absolute", left: 0, right: 0, top: 34, height: 1, background: "rgba(16,16,16,0.07)" }}></div>
-              <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "rgba(16,16,16,0.05)" }}></div>
-              <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "16%", background: "linear-gradient(180deg,rgba(16,16,16,0.055),rgba(16,16,16,0.015))", borderTop: "1px solid rgba(16,16,16,0.13)" }}></div>
-              <div style={{ position: "absolute", top: "-20%", bottom: "-20%", left: "-30%", right: "-30%", background: "linear-gradient(104deg,transparent 36%,rgba(255,255,255,0.9) 46%,rgba(255,255,255,0.2) 53%,transparent 62%)", animation: "vitGlint 11s cubic-bezier(0.5,0,0.5,1) infinite", pointerEvents: "none" }}></div>
-            </div>
-            <canvas id="vit-bottle-canvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}></canvas>
-            <div id="vit-bottle-fallback" style={{ position: "absolute", inset: 0, opacity: 0, transition: "opacity 0.4s", display: "flex", alignItems: "flex-end", justifyContent: "center", pointerEvents: "none" }}>
-              <div style={{ width: "46%", height: "82%", background: "linear-gradient(104deg,#F7F8F8,#E4E9E8 48%,#F4F6F5)", border: "1px solid " + V.rule, borderBottom: "none" }}></div>
-            </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {slides.map((s, i) => (
+              <button key={i} onClick={() => setIdx(i)} aria-label={"Go to slide " + (i + 1)} style={{ fontFamily: V.mono, fontSize: 11, letterSpacing: "0.1em", background: "none", border: "none", cursor: "pointer", padding: "10px 4px", minWidth: 30, minHeight: 44, color: i === idx ? "#fff" : "rgba(255,255,255,0.5)", borderBottom: "1px solid " + (i === idx ? "#fff" : "transparent") }}>{String(i + 1).padStart(2, "0")}</button>
+            ))}
           </div>
         </div>
-        <div style={{ position: "absolute", left: PAD, bottom: -1, height: 1, width: "clamp(60px,12vw,180px)", background: V.wine }}></div>
+        <div style={{ position: "absolute", left: PAD, bottom: -1, height: 2, width: "clamp(60px,12vw,180px)", background: V.wine }}></div>
       </section>
 
       {/* object line */}

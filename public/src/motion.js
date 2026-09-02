@@ -169,4 +169,34 @@
   window.addEventListener("scroll", function () {
     sy = Math.min(window.scrollY * 0.08, 34); schedule();
   }, { passive: true });
+
+  /* ── cinematic hero scroll (full-bleed video reel) ─────────────────────── */
+  // As the hero leaves the viewport the clip zooms in, and the overlaid copy
+  // drifts up and fades — a slow "scroll-away" that reads as film, not a jump-cut.
+  var heroEl = null, zoomEl = null, copyEl = null, hpraf = false;
+  function findHero() {
+    heroEl = document.querySelector("[data-vit-hero]");
+    if (heroEl) {
+      zoomEl = heroEl.querySelector("[data-vit-hero-zoom]");
+      copyEl = heroEl.querySelector("[data-vit-hero-copy]");
+    }
+    return heroEl;
+  }
+  function applyHeroScroll() {
+    hpraf = false;
+    if (!heroEl && !findHero()) return;
+    var r = heroEl.getBoundingClientRect();
+    var h = r.height || 1;
+    var p = Math.min(Math.max(-r.top / h, 0), 1); // 0 at hero top → 1 one hero-height scrolled
+    if (zoomEl) zoomEl.style.transform = "scale(" + (1 + p * 0.12).toFixed(4) + ")";
+    if (copyEl) {
+      copyEl.style.transform = "translateY(" + (p * -70).toFixed(1) + "px)";
+      copyEl.style.opacity = Math.max(0, 1 - p * 1.15).toFixed(3);
+    }
+  }
+  function scheduleHero() { if (!hpraf) { hpraf = true; requestAnimationFrame(applyHeroScroll); } }
+  window.addEventListener("scroll", scheduleHero, { passive: true });
+  window.addEventListener("resize", scheduleHero, { passive: true });
+  // The hero mounts after React (Babel-in-browser); catch it with a few settle passes.
+  [300, 900, 1800].forEach(function (t) { setTimeout(scheduleHero, t); });
 })();

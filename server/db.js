@@ -379,6 +379,8 @@ ensureColumn("hero_slides", "custom_title", "custom_title TEXT");  // headline (
 ensureColumn("hero_slides", "custom_dek",   "custom_dek TEXT");    // supporting line (overrides product copy)
 ensureColumn("hero_slides", "custom_cta",   "custom_cta TEXT");    // button label (default "Shop")
 ensureColumn("hero_slides", "custom_href",  "custom_href TEXT");   // where the CTA points (default #shelf)
+ensureColumn("hero_slides", "custom_video", "custom_video TEXT");  // hero clip (Veo mp4/webm) — /uploads/hero/… or a CDN URL
+ensureColumn("hero_slides", "custom_poster","custom_poster TEXT"); // still shown before the clip loads / as fallback
 
 // ── Phone-OTP sign-up: make users.email optional ───────────────────────────
 // Phone-first accounts have no email, but the original schema declared

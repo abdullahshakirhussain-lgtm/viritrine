@@ -18,6 +18,64 @@
 <script type="text/babel" src="src/admin-shell.jsx"></script>
 
 <script type="text/babel">
+// Upload (or clear) a slide's clip / poster. kind is "video" | "poster".
+async function heroMediaUpload(kind, id, file) {
+  const form = new FormData();
+  form.append(kind, file);
+  const res = await fetch(`/api/admin/hero-slides/${id}/${kind}`, { method: "POST", credentials: "include", body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Upload failed");
+  return data;
+}
+async function heroMediaRemove(kind, id) {
+  const res = await fetch(`/api/admin/hero-slides/${id}/${kind}`, { method: "DELETE", credentials: "include" });
+  if (!res.ok) throw new Error("Remove failed");
+}
+
+// Per-row media controls: clip + poster, with a live preview.
+function MediaCell({ row, onChange }) {
+  const [busy, setBusy] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const pick = (kind) => async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setErr(""); setBusy(kind);
+    try { await heroMediaUpload(kind, row.id, file); await onChange(); }
+    catch (ex) { setErr(ex.message); }
+    finally { setBusy(""); }
+  };
+  const clear = (kind) => async () => {
+    setErr(""); setBusy(kind);
+    try { await heroMediaRemove(kind, row.id); await onChange(); }
+    catch (ex) { setErr(ex.message); }
+    finally { setBusy(""); }
+  };
+  const label = (kind, accept, has) => (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <label className="chip-toggle" style={{ cursor: "pointer", opacity: busy ? 0.5 : 1 }}>
+        {busy === kind ? "Uploading…" : (has ? "Replace " + kind : "Upload " + kind)}
+        <input type="file" accept={accept} onChange={pick(kind)} disabled={!!busy} style={{ display: "none" }} />
+      </label>
+      {has && <button type="button" className="danger" style={{ padding: "3px 8px" }} onClick={clear(kind)} disabled={!!busy}>✕</button>}
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 200 }}>
+      <div style={{ width: 132, height: 78, background: "var(--bg-2)", border: "1px solid var(--line)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {row.custom_video
+          ? <video src={row.custom_video} poster={row.custom_poster || undefined} muted loop autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          : row.custom_poster
+            ? <img src={row.custom_poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : <span style={{ fontSize: 11, color: "var(--ink-3)" }}>no clip</span>}
+      </div>
+      {label("video", "video/mp4,video/webm", !!row.custom_video)}
+      {label("poster", "image/*", !!row.custom_poster)}
+      {err && <div style={{ color: "var(--wine)", fontSize: 11 }}>{err}</div>}
+    </div>
+  );
+}
+
 function HeroAdmin() {
   const [rows, setRows] = React.useState(null);
   const [products, setProducts] = React.useState([]);
@@ -80,6 +138,13 @@ function HeroAdmin() {
           leave the product blank and type your own headline (like a seasonal or
           brand-story slide). Any field left blank falls back to a sensible default.
         </p>
+        <p style={{ marginTop: -4, marginBottom: 16, color: "var(--ink-3)", fontSize: 13, lineHeight: 1.5, borderLeft: "2px solid var(--wine)", paddingLeft: 12 }}>
+          <b>Hero clips.</b> Each slide can carry its own cinematic clip — the homepage hero
+          cycles through them full-bleed. Add a slide first, then attach a <b>clip</b> (and an
+          optional <b>poster</b> still) in the Media column. Best results: MP4 (H.264), ~1080p,
+          <b> muted</b>, 5–8 seconds, web-optimised (faststart), under 50 MB. The poster shows
+          instantly while the clip loads and stands in on slow connections.
+        </p>
         <form onSubmit={add} className="form-grid-2">
           <div className="field">
             <label>Product <span style={{ color: "var(--ink-3)" }}>(optional)</span></label>
@@ -118,7 +183,7 @@ function HeroAdmin() {
           <table className="dt">
             <thead><tr>
               <th className="bulk-cell"><BulkCheckHeader allSelected={sel.allSelected} some={sel.some} onToggleAll={sel.toggleAll} /></th>
-              <th></th><th>Order</th><th>Slide</th><th>Content <span style={{fontWeight:400,color:"var(--ink-3)"}}>(edit inline)</span></th><th>Active</th><th></th>
+              <th></th><th>Order</th><th>Slide</th><th>Content <span style={{fontWeight:400,color:"var(--ink-3)"}}>(edit inline)</span></th><th>Media <span style={{fontWeight:400,color:"var(--ink-3)"}}>(clip + poster)</span></th><th>Active</th><th></th>
             </tr></thead>
             <tbody>
               {rows.map((r, i) => {
@@ -150,6 +215,7 @@ function HeroAdmin() {
                         </div>
                       </div>
                     </td>
+                    <td><MediaCell row={r} onChange={load} /></td>
                     <td><button type="button" className={"chip-toggle" + (r.active ? " on" : "")} onClick={() => update(r, { active: !r.active })}>{r.active ? "Active" : "Hidden"}</button></td>
                     <td className="row-actions"><button className="danger" onClick={() => del(r)}>Remove</button></td>
                   </tr>

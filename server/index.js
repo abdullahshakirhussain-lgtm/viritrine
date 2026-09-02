@@ -96,12 +96,14 @@ const UPLOAD_DIR = path.join(__dirname, "data", "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(path.join(UPLOAD_DIR, "products"), { recursive: true });
 fs.mkdirSync(path.join(UPLOAD_DIR, "brands"),   { recursive: true });
+fs.mkdirSync(path.join(UPLOAD_DIR, "hero"),     { recursive: true });
 
 // Derive the file extension from the *validated* content-type, never the
 // client-supplied filename (which can be spoofed, e.g. shell.php.jpg).
 const MIME_EXT = {
   "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
   "image/webp": ".webp", "image/avif": ".avif", "image/gif": ".gif",
+  "video/mp4": ".mp4", "video/webm": ".webm",
 };
 const extFromMime = (m) => MIME_EXT[m] || ".bin";
 
@@ -120,6 +122,29 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     const ok = /^image\/(png|jpe?g|webp|avif|gif)$/.test(file.mimetype);
     cb(ok ? null : new Error("Only PNG / JPG / WEBP / AVIF / GIF allowed"), ok);
+  },
+});
+
+// Hero clips (Veo mp4/webm) — bigger cap, own folder. Posters use the 6 MB image
+// `upload` above. Extension always comes from the validated mimetype.
+const heroStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "hero")),
+  filename: (_req, file, cb) => cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype)),
+});
+const heroVideoUpload = multer({
+  storage: heroStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+  fileFilter: (_req, file, cb) => {
+    const ok = /^video\/(mp4|webm)$/.test(file.mimetype);
+    cb(ok ? null : new Error("Only MP4 or WEBM video allowed"), ok);
+  },
+});
+const heroPosterUpload = multer({
+  storage: heroStorage,
+  limits: { fileSize: 6 * 1024 * 1024 }, // 6 MB
+  fileFilter: (_req, file, cb) => {
+    const ok = /^image\/(png|jpe?g|webp|avif)$/.test(file.mimetype);
+    cb(ok ? null : new Error("Poster must be PNG / JPG / WEBP / AVIF"), ok);
   },
 });
 
@@ -351,6 +376,7 @@ app.get("/api/hero-slides", (req, res) => {
   const rows = db.prepare(`
     SELECT h.id AS slide_id, h.product_id,
            h.custom_tag, h.custom_title, h.custom_dek, h.custom_cta, h.custom_href,
+           h.custom_video, h.custom_poster,
            h.sort, p.*
     FROM hero_slides h
     LEFT JOIN products p ON p.id = h.product_id
@@ -369,6 +395,8 @@ app.get("/api/hero-slides", (req, res) => {
       customDek: r.custom_dek,
       customCta: r.custom_cta,
       customHref: r.custom_href,
+      customVideo: r.custom_video,
+      customPoster: r.custom_poster,
     };
   });
   // Hide reserved product-slides from non-members; editorial slides always show.
@@ -1863,10 +1891,11 @@ app.post("/api/admin/hero-slides", requireAuth, requireAdmin, (req, res) => {
   if (pid && !db.prepare("SELECT id FROM products WHERE id=?").get(pid)) return res.status(404).json({ error: "Product not found" });
   const m = db.prepare("SELECT COALESCE(MAX(sort),-1) m FROM hero_slides").get().m;
   const info = db.prepare(`INSERT INTO hero_slides
-    (product_id, custom_tag, custom_title, custom_dek, custom_cta, custom_href, sort)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    (product_id, custom_tag, custom_title, custom_dek, custom_cta, custom_href, custom_video, custom_poster, sort)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     pid || null, req.body.custom_tag || null, title || null,
-    req.body.custom_dek || null, req.body.custom_cta || null, req.body.custom_href || null, m + 1,
+    req.body.custom_dek || null, req.body.custom_cta || null, req.body.custom_href || null,
+    req.body.custom_video || null, req.body.custom_poster || null, m + 1,
   );
   res.json({ ok: true, id: info.lastInsertRowid });
 });
@@ -1876,10 +1905,11 @@ app.patch("/api/admin/hero-slides/:id", requireAuth, requireAdmin, (req, res) =>
   const b = req.body || {};
   const pick = (k) => (b[k] !== undefined ? (b[k] === "" ? null : b[k]) : cur[k]);
   db.prepare(`UPDATE hero_slides SET
-      product_id=?, custom_tag=?, custom_title=?, custom_dek=?, custom_cta=?, custom_href=?, sort=?, active=?
+      product_id=?, custom_tag=?, custom_title=?, custom_dek=?, custom_cta=?, custom_href=?, custom_video=?, custom_poster=?, sort=?, active=?
       WHERE id=?`).run(
     b.product_id !== undefined ? (b.product_id || null) : cur.product_id,
     pick("custom_tag"), pick("custom_title"), pick("custom_dek"), pick("custom_cta"), pick("custom_href"),
+    pick("custom_video"), pick("custom_poster"),
     b.sort ?? cur.sort,
     b.active != null ? (b.active ? 1 : 0) : cur.active,
     req.params.id,
@@ -1887,9 +1917,45 @@ app.patch("/api/admin/hero-slides/:id", requireAuth, requireAdmin, (req, res) =>
   res.json({ ok: true });
 });
 app.delete("/api/admin/hero-slides/:id", requireAuth, requireAdmin, (req, res) => {
+  // Clean up any uploaded clip/poster that lives under our /uploads (leave CDN URLs alone).
+  const cur = db.prepare("SELECT custom_video, custom_poster FROM hero_slides WHERE id=?").get(req.params.id);
+  if (cur) for (const rel of [cur.custom_video, cur.custom_poster]) unlinkUpload(rel);
   db.prepare("DELETE FROM hero_slides WHERE id=?").run(req.params.id);
   res.json({ ok: true });
 });
+
+// Remove an uploaded file we own (path under /uploads). No-op for external URLs.
+function unlinkUpload(rel) {
+  if (!rel || !rel.startsWith("/uploads/")) return;
+  const f = path.join(UPLOAD_DIR, rel.replace(/^\/uploads\//, ""));
+  try { fs.existsSync(f) && fs.unlinkSync(f); } catch {}
+}
+
+// Attach / replace / clear a hero slide's clip or poster. Field name matches the
+// media kind ("video" | "poster"); the file is stored under /uploads/hero.
+function heroMediaRoutes(kind, column, mw) {
+  app.post(`/api/admin/hero-slides/:id/${kind}`, uploadLimit, requireAuth, requireAdmin, (req, res) => {
+    const slide = db.prepare("SELECT * FROM hero_slides WHERE id=?").get(req.params.id);
+    if (!slide) return res.status(404).json({ error: "Slide not found" });
+    mw.single(kind)(req, res, (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!req.file) return res.status(400).json({ error: "No file" });
+      unlinkUpload(slide[column]); // drop the previous upload if we're replacing one
+      const url = `/uploads/hero/${req.file.filename}`;
+      db.prepare(`UPDATE hero_slides SET ${column}=? WHERE id=?`).run(url, req.params.id);
+      res.json({ ok: true, url });
+    });
+  });
+  app.delete(`/api/admin/hero-slides/:id/${kind}`, requireAuth, requireAdmin, (req, res) => {
+    const slide = db.prepare("SELECT * FROM hero_slides WHERE id=?").get(req.params.id);
+    if (!slide) return res.status(404).json({ error: "Slide not found" });
+    unlinkUpload(slide[column]);
+    db.prepare(`UPDATE hero_slides SET ${column}=NULL WHERE id=?`).run(req.params.id);
+    res.json({ ok: true });
+  });
+}
+heroMediaRoutes("video",  "custom_video",  heroVideoUpload);
+heroMediaRoutes("poster", "custom_poster", heroPosterUpload);
 
 // ── admin: journal ──────────────────────────────────────────
 app.get("/api/admin/journal", requireAuth, requireAdmin, (_req, res) => {
