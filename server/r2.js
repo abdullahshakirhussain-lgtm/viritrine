@@ -15,6 +15,9 @@ if (r2Configured) {
   client = new S3Client({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
+    // Path-style keeps every request on the one account hostname; R2's per-bucket
+    // virtual-hosted subdomains resolve unreliably (intermittent ENOTFOUND).
+    forcePathStyle: true,
     credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY },
   });
 }
