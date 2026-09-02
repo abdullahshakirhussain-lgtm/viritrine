@@ -3,6 +3,9 @@
 // falls back to local disk (so local dev works with no R2 config). Mirrors the
 // "unset key → disabled, app keeps working" pattern used by ai.js / sms.js.
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const https = require("https");
+let NodeHttpHandler = null;
+try { NodeHttpHandler = require("@smithy/node-http-handler").NodeHttpHandler; } catch (_) {}
 
 const r2Configured = !!(
   process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY &&
@@ -18,7 +21,11 @@ if (r2Configured) {
     // Path-style keeps every request on the one account hostname; R2's per-bucket
     // virtual-hosted subdomains resolve unreliably (intermittent ENOTFOUND).
     forcePathStyle: true,
+    maxAttempts: 6, // SDK retries transient network/DNS errors
     credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY },
+    // Keep-alive reuses TCP connections, so we do far fewer DNS lookups — the fix
+    // for the getaddrinfo ENOTFOUND bursts seen under high upload volume.
+    ...(NodeHttpHandler ? { requestHandler: new NodeHttpHandler({ httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 32 }) }) } : {}),
   });
 }
 
