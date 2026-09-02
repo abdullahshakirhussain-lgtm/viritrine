@@ -63,6 +63,15 @@ const CONCERNS = [
   { key: "dry",         label: "Dry / Dehydrated" },
 ];
 
+// Shop-by-skin-type axis (mirrors the server `skin_types` seed).
+const SKIN_TYPES = [
+  { key: "oily",        label: "Oily" },
+  { key: "dry",         label: "Dry" },
+  { key: "combination", label: "Combination" },
+  { key: "normal",      label: "Normal" },
+  { key: "sensitive",   label: "Sensitive" },
+];
+
 const SORTS = [
   { key: "featured",     label: "Featured" },
   { key: "new",          label: "Newest" },
@@ -75,4 +84,5 @@ const SORTS = [
 window.PRODUCTS  = PRODUCTS;
 window.CATEGORIES = CATEGORIES;
 window.CONCERNS  = CONCERNS;
+window.SKIN_TYPES = SKIN_TYPES;
 window.SORTS     = SORTS;

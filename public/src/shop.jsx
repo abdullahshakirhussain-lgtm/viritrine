@@ -7,11 +7,14 @@ const fmtLKR = (n) => "LKR " + n.toLocaleString("en-US");
 
 function parseHash() {
   const out = Object.fromEntries(new URLSearchParams((window.location.hash || "").replace(/^#/, "")).entries());
-  // Pretty URLs: /brand/:key and /category/:key are equivalent to #brand=... / #cat=...
-  const m = window.location.pathname.match(/^\/(brand|category)\/([a-z0-9_-]+)/i);
+  // Pretty URLs: /brand/:key, /category/:key, /skin/:key, /concern/:key map to filters.
+  const m = window.location.pathname.match(/^\/(brand|category|skin|concern)\/([a-z0-9_-]+)/i);
   if (m) {
-    if (m[1].toLowerCase() === "brand")    out.brand = decodeURIComponent(m[2]);
-    if (m[1].toLowerCase() === "category") out.cat   = decodeURIComponent(m[2]);
+    const kind = m[1].toLowerCase(), val = decodeURIComponent(m[2]);
+    if (kind === "brand")    out.brand = val;
+    if (kind === "category") out.cat   = val;
+    if (kind === "skin")     out.skin  = val;
+    if (kind === "concern")  out.concern = val;
   }
   return out;
 }
@@ -21,6 +24,7 @@ function filterProducts(items, f) {
     if (f.category && p.category !== f.category) return false;
     if (f.brand && p.brand !== f.brand) return false;
     if (f.concern && !(p.concerns || []).includes(f.concern)) return false;
+    if (f.skin && !(p.skinTypes || []).includes(f.skin)) return false;
     if (f.sale && !p.sale) return false;
     if (f.newOnly && !p.isNew) return false;
     if (f.ceylonOnly) {
@@ -58,6 +62,7 @@ function Toast({ msg }) {
 function Breadcrumb({ filters }) {
   const last = filters.brand ? BRANDS[filters.brand].name
             : filters.category ? CATEGORIES.find(c => c.key === filters.category)?.label
+            : filters.skin ? (SKIN_TYPES.find(c => c.key === filters.skin)?.label || filters.skin) + " skin"
             : filters.concern ? CONCERNS.find(c => c.key === filters.concern)?.label
             : filters.sale ? "Sale"
             : "All";
@@ -96,6 +101,12 @@ function ShopHeader({ filters, count }) {
     title = c.label;
     italic = c.italic;
     copy = "A curated selection from the brands we carry, sorted for clarity.";
+  } else if (filters.skin) {
+    const c = SKIN_TYPES.find(x => x.key === filters.skin) || { label: filters.skin };
+    eyebrow = "Shop by Skin Type";
+    title = c.label + " Skin";
+    italic = "Matched";
+    copy = `Cleansers, serums and moisturisers our team recommends for ${c.label.toLowerCase()} skin.`;
   } else if (filters.concern) {
     const c = CONCERNS.find(x => x.key === filters.concern) || { label: filters.concern };
     eyebrow = "Shop by Concern";
@@ -243,6 +254,13 @@ function FilterDrawer({ open, onClose, filters, setFilters, results }) {
                 onClick={() => setF("category", c.key === filters.category ? null : c.key)}>{c.label}</button>
             ))}
           </div>
+          <div className="fd-section">Skin type</div>
+          <div className="fd-chips">
+            {SKIN_TYPES.map(c => (
+              <button key={c.key} className={"fd-chip" + (c.key === filters.skin ? " on" : "")}
+                onClick={() => setF("skin", c.key === filters.skin ? null : c.key)}>{c.label}</button>
+            ))}
+          </div>
           <div className="fd-section">Concern</div>
           <div className="fd-chips">
             {CONCERNS.map(c => (
@@ -267,7 +285,7 @@ function FilterDrawer({ open, onClose, filters, setFilters, results }) {
         <div className="fd-foot">
           <div className="results"><b>{results}</b>result{results === 1 ? "" : "s"}</div>
           <button className="btn-ghost" onClick={() =>
-            setFilters({ category: null, brand: null, concern: null, sale: false, newOnly: false, ceylonOnly: false })
+            setFilters({ category: null, brand: null, concern: null, skin: null, sale: false, newOnly: false, ceylonOnly: false })
           }>Clear</button>
           <button className="btn-solid" onClick={onClose}>Apply <span>⟶</span></button>
         </div>
@@ -319,6 +337,7 @@ function ActiveFilters({ filters, setFilters, sort }) {
   const pills = [];
   if (filters.category) pills.push({ k: "category", label: "Category: " + (CATEGORIES.find(c => c.key === filters.category)?.label || filters.category) });
   if (filters.brand)    pills.push({ k: "brand",    label: "Brand: " + BRANDS[filters.brand].name });
+  if (filters.skin)     pills.push({ k: "skin",     label: "Skin: " + (SKIN_TYPES.find(c => c.key === filters.skin)?.label || filters.skin) });
   if (filters.concern)  pills.push({ k: "concern",  label: "Concern: " + (CONCERNS.find(c => c.key === filters.concern)?.label || filters.concern) });
   if (filters.sale)       pills.push({ k: "sale",       label: "On Sale" });
   if (filters.newOnly)    pills.push({ k: "newOnly",    label: "New" });
@@ -335,7 +354,7 @@ function ActiveFilters({ filters, setFilters, sort }) {
         </span>
       ))}
       <button className="clear-all" onClick={() =>
-        setFilters({ category: null, brand: null, concern: null, sale: false, newOnly: false, ceylonOnly: false })
+        setFilters({ category: null, brand: null, concern: null, skin: null, sale: false, newOnly: false, ceylonOnly: false })
       }>Clear All</button>
     </div>
   );
@@ -377,6 +396,13 @@ function MobileFilterSheet({ open, onClose, filters, setFilters, sort, setSort }
             ))}
           </div>
 
+          <div className="mfs-section">Skin type</div>
+          <div className="mfs-chips">
+            {SKIN_TYPES.map(c => (
+              <button key={c.key} className={"mfs-chip" + (c.key === filters.skin ? " on" : "")} onClick={() => setF("skin", c.key === filters.skin ? null : c.key)}>{c.label}</button>
+            ))}
+          </div>
+
           <div className="mfs-section">Concern</div>
           <div className="mfs-chips">
             {CONCERNS.map(c => (
@@ -400,7 +426,7 @@ function MobileFilterSheet({ open, onClose, filters, setFilters, sort, setSort }
         </div>
         <div className="mfs-foot">
           <button className="btn-ghost" onClick={() => {
-            setFilters({ category: null, brand: null, concern: null, sale: false, newOnly: false, ceylonOnly: false });
+            setFilters({ category: null, brand: null, concern: null, skin: null, sale: false, newOnly: false, ceylonOnly: false });
             setSort("featured");
           }}>Clear</button>
           <button className="btn-solid" onClick={onClose}>Apply <span>⟶</span></button>
@@ -694,6 +720,7 @@ function ShopPage() {
     category: initial.cat || null,
     brand:    initial.brand || null,
     concern:  initial.concern || null,
+    skin:     initial.skin || null,
     sale:     initial.sale === "1",
     newOnly:  initial.new === "1",
     ceylonOnly: initial.ceylon === "1",
@@ -733,7 +760,7 @@ function ShopPage() {
 
   const activeCount =
     (filters.category ? 1 : 0) + (filters.brand ? 1 : 0) + (filters.concern ? 1 : 0) +
-    (filters.sale ? 1 : 0) + (filters.newOnly ? 1 : 0) + (filters.ceylonOnly ? 1 : 0);
+    (filters.skin ? 1 : 0) + (filters.sale ? 1 : 0) + (filters.newOnly ? 1 : 0) + (filters.ceylonOnly ? 1 : 0);
 
   const addToBag = async (product) => {
     try {
@@ -834,7 +861,7 @@ function ShopPage() {
             <h2>No matches in <em>this corner.</em></h2>
             <p>Try clearing a filter or two — or wander into the Ceylon brands, where everyone tends to find something.</p>
             <div className="actions">
-              <button className="btn-solid" onClick={() => setFilters({ category: null, brand: null, concern: null, sale: false, newOnly: false, ceylonOnly: false })}>Clear all filters</button>
+              <button className="btn-solid" onClick={() => setFilters({ category: null, brand: null, concern: null, skin: null, sale: false, newOnly: false, ceylonOnly: false })}>Clear all filters</button>
               <a className="btn-ghost" href="Shop.html#ceylon=1">Browse Ceylon ⟶</a>
             </div>
             <div className="ornament">

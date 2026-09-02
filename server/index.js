@@ -209,6 +209,7 @@ const productById = (id) => {
 const hydrateProduct = (row) => {
   const brand = db.prepare("SELECT * FROM brands WHERE key=?").get(row.brand_key);
   const concerns = db.prepare("SELECT concern FROM product_concerns WHERE product_id=?").all(row.id).map(r => r.concern);
+  const skinTypes = db.prepare("SELECT skin_type FROM product_skin_types WHERE product_id=?").all(row.id).map(r => r.skin_type);
   const notes = db.prepare("SELECT note FROM product_notes WHERE product_id=? ORDER BY sort").all(row.id).map(r => r.note);
   return {
     id: row.id,
@@ -239,6 +240,7 @@ const hydrateProduct = (row) => {
     membersOnly: !!row.members_only,
     earlyAccessUntil: row.early_access_until || null,
     concerns,
+    skinTypes,
     notes,
   };
 };
@@ -352,6 +354,9 @@ app.get("/api/categories", (_req, res) => {
 
 app.get("/api/concerns", (_req, res) => {
   res.json(db.prepare("SELECT * FROM concerns ORDER BY sort").all());
+});
+app.get("/api/skin-types", (_req, res) => {
+  res.json(db.prepare("SELECT * FROM skin_types ORDER BY sort").all());
 });
 
 // Public settings — returns a flat key->value object of all settings.
@@ -479,12 +484,16 @@ app.get("/api/locations", (_req, res) => {
 });
 
 app.get("/api/products", (req, res) => {
-  const { category, brand, concern, sale, isNew, ceylon, sort, q, limit, offset } = req.query;
+  const { category, brand, concern, skin, sale, isNew, ceylon, sort, q, limit, offset } = req.query;
   let sql = "SELECT DISTINCT p.* FROM products p";
   const where = ["(p.is_active IS NULL OR p.is_active = 1)"]; const params = [];
   if (concern) {
     sql += " JOIN product_concerns pc ON pc.product_id = p.id";
     where.push("pc.concern = ?"); params.push(concern);
+  }
+  if (skin) {
+    sql += " JOIN product_skin_types ps ON ps.product_id = p.id";
+    where.push("ps.skin_type = ?"); params.push(skin);
   }
   if (ceylon === "1") sql += " JOIN brands b ON b.key = p.brand_key";
   if (category)         { where.push("p.category = ?");      params.push(category); }
@@ -1421,13 +1430,17 @@ const productSchema = z.object({
   members_only:       z.boolean().optional(),
   early_access_until: z.number().int().nullable().optional(),
   concerns:     z.array(z.string()).optional(),
+  skin_types:   z.array(z.string()).optional(),
   notes:        z.array(z.string()).optional(),
 });
 
-const writeConcernsNotes = (id, concerns = [], notes = []) => {
+const writeConcernsNotes = (id, concerns = [], notes = [], skinTypes = []) => {
   db.prepare("DELETE FROM product_concerns WHERE product_id=?").run(id);
   const insC = db.prepare("INSERT INTO product_concerns (product_id,concern) VALUES (?,?)");
   concerns.forEach(c => insC.run(id, c));
+  db.prepare("DELETE FROM product_skin_types WHERE product_id=?").run(id);
+  const insS = db.prepare("INSERT OR IGNORE INTO product_skin_types (product_id,skin_type) VALUES (?,?)");
+  skinTypes.forEach(s => insS.run(id, s));
   db.prepare("DELETE FROM product_notes WHERE product_id=?").run(id);
   const insN = db.prepare("INSERT INTO product_notes (product_id,note,sort) VALUES (?,?,?)");
   notes.forEach((n, i) => insN.run(id, n, i));
@@ -1451,7 +1464,7 @@ app.post("/api/admin/products", requireAuth, requireAdmin, (req, res) => {
       d.editor_pick_sort ?? null, d.editor_tag || null, d.meta_title || null, d.meta_desc || null,
       d.members_only ? 1 : 0, d.early_access_until ?? null,
     );
-    writeConcernsNotes(d.id, d.concerns, d.notes);
+    writeConcernsNotes(d.id, d.concerns, d.notes, d.skin_types);
   })();
   res.json({ ok: true, product: productById(d.id) });
 });
@@ -1463,6 +1476,7 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
   // Allow partial updates — start from current row then merge.
   const cur = db.prepare("SELECT * FROM products WHERE id=?").get(id);
   const curConcerns = db.prepare("SELECT concern FROM product_concerns WHERE product_id=?").all(id).map(r => r.concern);
+  const curSkin     = db.prepare("SELECT skin_type FROM product_skin_types WHERE product_id=?").all(id).map(r => r.skin_type);
   const curNotes    = db.prepare("SELECT note FROM product_notes WHERE product_id=? ORDER BY sort").all(id).map(r => r.note);
   const merged = {
     id, // unchanged
@@ -1490,6 +1504,7 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
     members_only:       req.body.members_only       ?? !!cur.members_only,
     early_access_until: req.body.early_access_until !== undefined ? req.body.early_access_until : cur.early_access_until,
     concerns:         req.body.concerns         ?? curConcerns,
+    skin_types:       req.body.skin_types       ?? curSkin,
     notes:            req.body.notes            ?? curNotes,
   };
   const parsed = productSchema.safeParse(merged);
@@ -1513,7 +1528,7 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
       d.members_only ? 1 : 0, d.early_access_until ?? null,
       id,
     );
-    writeConcernsNotes(id, d.concerns, d.notes);
+    writeConcernsNotes(id, d.concerns, d.notes, d.skin_types);
   })();
   res.json({ ok: true, product: productById(id) });
 });
@@ -1745,6 +1760,24 @@ app.post("/api/admin/concerns", requireAuth, requireAdmin, (req, res) => {
 app.delete("/api/admin/concerns/:key", requireAuth, requireAdmin, (req, res) => {
   db.prepare("DELETE FROM product_concerns WHERE concern=?").run(req.params.key);
   db.prepare("DELETE FROM concerns WHERE key=?").run(req.params.key);
+  res.json({ ok: true });
+});
+
+// Skin types — same shape as concerns (see concernSchema).
+app.get("/api/admin/skin-types", requireAuth, requireAdmin, (_req, res) => {
+  res.json(db.prepare("SELECT * FROM skin_types ORDER BY sort").all());
+});
+app.post("/api/admin/skin-types", requireAuth, requireAdmin, (req, res) => {
+  const p = concernSchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: "Invalid input" });
+  if (db.prepare("SELECT key FROM skin_types WHERE key=?").get(p.data.key)) return res.status(409).json({ error: "Skin type exists" });
+  const m = db.prepare("SELECT COALESCE(MAX(sort),-1) m FROM skin_types").get().m;
+  db.prepare("INSERT INTO skin_types (key,label,sort) VALUES (?,?,?)").run(p.data.key, p.data.label, p.data.sort ?? (m + 1));
+  res.json({ ok: true });
+});
+app.delete("/api/admin/skin-types/:key", requireAuth, requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM product_skin_types WHERE skin_type=?").run(req.params.key);
+  db.prepare("DELETE FROM skin_types WHERE key=?").run(req.params.key);
   res.json({ ok: true });
 });
 
@@ -2420,6 +2453,63 @@ app.get("/category/:key", (req, res) => {
   });
 });
 
+// Shared renderer for a taxonomy landing page (/skin/:key, /concern/:key). These
+// are high-intent SEO surfaces: crawlable meta + BreadcrumbList + an ItemList of
+// the matching products. `joinTable`/`col` name the product↔taxonomy join.
+function taxonomyLanding(req, res, { row, kind, label, joinTable, col, browseName, browseHref }) {
+  const s = settingsAll();
+  const siteName = s["site.name"] || "VITRINE";
+  if (!row) return renderHtml(req, res, "Shop.html", { settingsCache: s, title: `Not found — ${siteName}` });
+  const items = db.prepare(
+    `SELECT p.id, p.name, p.italic FROM products p
+       JOIN ${joinTable} j ON j.product_id = p.id
+      WHERE j.${col} = ? AND (p.is_active IS NULL OR p.is_active = 1)
+      ORDER BY p.is_bestseller DESC, p.created_at DESC LIMIT 40`
+  ).all(row.key);
+  const n = items.length;
+  const title = `${label} — ${siteName}`;
+  const desc  = `Shop ${label.toLowerCase()} at ${siteName} — ${n} piece${n === 1 ? "" : "s"} hand-picked across our carried brands, delivered across Sri Lanka.`;
+  const itemList = {
+    "@context": "https://schema.org", "@type": "ItemList", "name": label,
+    "itemListElement": items.map((p, i) => ({
+      "@type": "ListItem", position: i + 1,
+      url: absoluteUrl(req, "/product/" + p.id),
+      name: `${p.name} ${p.italic || ""}`.trim(),
+    })),
+  };
+  const breadcrumb = {
+    "@context": "https://schema.org", "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", position: 1, name: "Home", item: absoluteUrl(req, "/") },
+      { "@type": "ListItem", position: 2, name: browseName, item: absoluteUrl(req, browseHref) },
+      { "@type": "ListItem", position: 3, name: label },
+    ],
+  };
+  renderHtml(req, res, "Shop.html", { settingsCache: s, title, description: desc, ldJson: [itemList, breadcrumb] });
+}
+
+// Pretty URL: /skin/:key  (Shop by skin type)
+app.get("/skin/:key", (req, res) => {
+  const row = db.prepare("SELECT * FROM skin_types WHERE key=?").get(req.params.key);
+  if (!row) res.status(404);
+  taxonomyLanding(req, res, {
+    row, kind: "skin", label: row ? `${row.label} skin` : "",
+    joinTable: "product_skin_types", col: "skin_type",
+    browseName: "Shop", browseHref: "/Shop.html",
+  });
+});
+
+// Pretty URL: /concern/:key  (Shop by concern)
+app.get("/concern/:key", (req, res) => {
+  const row = db.prepare("SELECT * FROM concerns WHERE key=?").get(req.params.key);
+  if (!row) res.status(404);
+  taxonomyLanding(req, res, {
+    row, kind: "concern", label: row ? row.label : "",
+    joinTable: "product_concerns", col: "concern",
+    browseName: "Shop", browseHref: "/Shop.html",
+  });
+});
+
 // Pretty URL: /journal and /journal/:slug
 app.get("/journal", (req, res) => {
   const s = settingsAll();
@@ -2531,6 +2621,10 @@ app.get("/sitemap.xml", (req, res) => {
   for (const b of brands) url("/brand/" + b.key, now, "0.7");
   const cats = db.prepare("SELECT key FROM categories").all();
   for (const c of cats) url("/category/" + c.key, now, "0.7");
+  const skins = db.prepare("SELECT key FROM skin_types").all();
+  for (const sk of skins) url("/skin/" + sk.key, now, "0.7");
+  const concerns = db.prepare("SELECT key FROM concerns").all();
+  for (const cn of concerns) url("/concern/" + cn.key, now, "0.7");
   const posts = db.prepare("SELECT slug, published_at FROM journal_posts WHERE published_at IS NOT NULL").all();
   for (const p of posts) url("/journal/" + p.slug, new Date(p.published_at * 1000).toISOString().slice(0,10), "0.6");
 

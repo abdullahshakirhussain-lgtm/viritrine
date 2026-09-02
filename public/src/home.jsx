@@ -12,6 +12,13 @@ const V = {
 };
 const PAD = "var(--vit-pad)";
 const NAV_LINKS = [["SHOP", "#shelf"], ["NEW IN", "#arrivals"], ["SALE", "#sale"], ["BRANDS", "#maisons"], ["STORIES", "#journal"]];
+const SKIN_BROWSE = [
+  ["oily", "Oily", "Balance, oil-control & clarity"],
+  ["dry", "Dry", "Rich moisture & barrier repair"],
+  ["combination", "Combination", "Balance where you need it"],
+  ["normal", "Normal", "Maintain & protect"],
+  ["sensitive", "Sensitive", "Calm, gentle & fragrance-free"],
+];
 const money = (n) => (window.fmtLKR ? window.fmtLKR(n) : "LKR " + Number(n || 0).toLocaleString("en-US"));
 
 const HERO_FALLBACK = [
@@ -358,6 +365,23 @@ function Home() {
           </div>
         </section>
       )}
+
+      {/* shop by skin type */}
+      <section id="skin" style={{ padding: "clamp(84px,11vw,168px) " + PAD + " 0" }}>
+        {sectionHead("Shop by skin type", "Matched to what your skin needs")}
+        <div data-reveal style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "1px", marginTop: "clamp(30px,4vw,54px)", background: V.rule, border: "1px solid " + V.rule }}>
+          {SKIN_BROWSE.map(([key, label, note], i) => (
+            <a key={key} href={"/skin/" + key} data-ripple style={{ "--d": (i * 45) + "ms", position: "relative", background: V.paper, padding: "clamp(24px,3vw,38px) clamp(18px,2vw,26px)", display: "flex", flexDirection: "column", minHeight: "clamp(150px,16vw,196px)", transition: "background 0.3s" }}
+              onMouseEnter={e => e.currentTarget.style.background = V.porcelain}
+              onMouseLeave={e => e.currentTarget.style.background = V.paper}>
+              <div style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.16em", color: V.wine }}>{String(i + 1).padStart(2, "0")}</div>
+              <h3 style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(22px,2.6vw,32px)", letterSpacing: "-0.02em", margin: "auto 0 0", textTransform: "uppercase" }}>{label}</h3>
+              <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: 14, lineHeight: 1.4, color: V.muted, margin: "10px 0 0" }}>{note}</p>
+              <span style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.13em", marginTop: 16, color: V.ink }}>SHOP →</span>
+            </a>
+          ))}
+        </div>
+      </section>
 
       {/* brands */}
       {brands.length > 0 && (

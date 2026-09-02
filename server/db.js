@@ -76,6 +76,12 @@ CREATE TABLE IF NOT EXISTS concerns (
   sort     INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS skin_types (
+  key      TEXT PRIMARY KEY,
+  label    TEXT NOT NULL,
+  sort     INTEGER DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id            TEXT PRIMARY KEY,
   brand_key     TEXT NOT NULL REFERENCES brands(key),
@@ -103,6 +109,12 @@ CREATE TABLE IF NOT EXISTS product_concerns (
   product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   concern    TEXT NOT NULL,
   PRIMARY KEY (product_id, concern)
+);
+
+CREATE TABLE IF NOT EXISTS product_skin_types (
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  skin_type  TEXT NOT NULL,
+  PRIMARY KEY (product_id, skin_type)
 );
 
 CREATE TABLE IF NOT EXISTS product_notes (
@@ -381,6 +393,14 @@ ensureColumn("hero_slides", "custom_cta",   "custom_cta TEXT");    // button lab
 ensureColumn("hero_slides", "custom_href",  "custom_href TEXT");   // where the CTA points (default #shelf)
 ensureColumn("hero_slides", "custom_video", "custom_video TEXT");  // hero clip (Veo mp4/webm) — /uploads/hero/… or a CDN URL
 ensureColumn("hero_slides", "custom_poster","custom_poster TEXT"); // still shown before the clip loads / as fallback
+
+// Seed the skin-type axis (idempotent) — the "Shop by skin type" browse + SEO
+// landing pages. Distinct from `concerns` (acne/aging/…); mirrors that pattern.
+{
+  const seedSkin = db.prepare("INSERT OR IGNORE INTO skin_types (key,label,sort) VALUES (?,?,?)");
+  [["oily", "Oily", 0], ["dry", "Dry", 1], ["combination", "Combination", 2], ["normal", "Normal", 3], ["sensitive", "Sensitive", 4]]
+    .forEach(([k, l, s]) => seedSkin.run(k, l, s));
+}
 
 // ── Phone-OTP sign-up: make users.email optional ───────────────────────────
 // Phone-first accounts have no email, but the original schema declared
