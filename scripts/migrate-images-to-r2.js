@@ -35,6 +35,24 @@ const TARGETS = [
   { table: "journal_posts", idCol: "id",  cols: ["cover_image"] },
 ];
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Retry transient network/DNS errors (this box's resolver flakes under load) with
+// exponential backoff, giving DNS time to recover between attempts.
+async function withRetry(fn, tries = 6) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); }
+    catch (e) {
+      lastErr = e;
+      const transient = /ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|timeout/i.test(e.message || "");
+      if (!transient) throw e;
+      await sleep(400 * Math.pow(2, i) + Math.random() * 200); // 0.4s,0.8s,1.6s,3.2s,6.4s…
+    }
+  }
+  throw lastErr;
+}
+
 async function migrateOne(url) {
   // Only local /uploads paths; leave R2/external URLs alone.
   if (!url || !String(url).startsWith("/uploads/")) return null;
@@ -43,7 +61,8 @@ async function migrateOne(url) {
   if (!fs.existsSync(abs)) return null; // nothing local to move
   const ext = path.extname(abs).toLowerCase();
   const key = rel.replace(/\\/g, "/"); // preserve folder/name as the R2 key
-  return r2.putObject(key, fs.readFileSync(abs), CT[ext] || "application/octet-stream");
+  const body = fs.readFileSync(abs);
+  return withRetry(() => r2.putObject(key, body, CT[ext] || "application/octet-stream"));
 }
 
 (async () => {
@@ -63,6 +82,7 @@ async function migrateOne(url) {
         db.prepare(`UPDATE ${t.table} SET ${col}=? WHERE ${t.idCol}=?`).run(newUrl, row.id);
         moved++; budget--;
         if (moved % 25 === 0) process.stdout.write(`\r  moved ${moved}…`);
+        await sleep(30); // ease DNS/connection pressure
       }
     }
   }
