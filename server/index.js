@@ -2690,6 +2690,20 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: "Server error" });
 });
 
+// First-boot seed: if the products table is empty (a fresh/ephemeral DB — e.g. a
+// Railway container with no persistent volume), load the demo catalogue so the
+// site is never blank. Skipped the moment any product exists, so it never
+// clobbers a populated/persisted DB. seed.js is idempotent (upserts).
+try {
+  const productCount = db.prepare("SELECT COUNT(*) c FROM products").get().c;
+  if (productCount === 0) {
+    console.log("No products found — seeding the demo catalogue…");
+    require("./seed");
+  }
+} catch (e) {
+  console.error("Auto-seed check failed:", e?.message || e);
+}
+
 app.listen(PORT, () => {
   console.log(`VITRINE running → http://localhost:${PORT}`);
 });
