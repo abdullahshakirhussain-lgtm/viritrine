@@ -15,6 +15,7 @@ try { require("dotenv").config(); } catch (_) {}
 const db = require("./db");
 const { sendSms, smsConfigured } = require("./sms");
 const { describeProductFromImage, aiConfigured, AI_PROVIDER } = require("./ai");
+const r2 = require("./r2");
 
 const PORT = parseInt(process.env.PORT || "4000", 10);
 const IS_PROD = process.env.NODE_ENV === "production";
@@ -107,32 +108,29 @@ const MIME_EXT = {
 };
 const extFromMime = (m) => MIME_EXT[m] || ".bin";
 
-const storage = multer.diskStorage({
-  destination: (req, _file, cb) => {
-    const sub = req.params.kind === "brands" ? "brands" : "products";
-    cb(null, path.join(UPLOAD_DIR, sub));
-  },
-  filename: (_req, file, cb) => {
-    cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype));
-  },
+// When R2 is configured, keep upload bytes in memory and push to the bucket;
+// otherwise write to local disk (dev fallback). finalizeUpload() turns either
+// into the stored URL (R2 public URL, or a /uploads/... path).
+const memStorage = multer.memoryStorage();
+const diskImage = multer.diskStorage({
+  destination: (req, _file, cb) => cb(null, path.join(UPLOAD_DIR, req.params.kind === "brands" ? "brands" : "products")),
+  filename: (_req, file, cb) => cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype)),
 });
+const diskHero = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "hero")),
+  filename: (_req, file, cb) => cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype)),
+});
+
 const upload = multer({
-  storage,
+  storage: r2.r2Configured ? memStorage : diskImage,
   limits: { fileSize: 6 * 1024 * 1024 }, // 6 MB
   fileFilter: (_req, file, cb) => {
     const ok = /^image\/(png|jpe?g|webp|avif|gif)$/.test(file.mimetype);
     cb(ok ? null : new Error("Only PNG / JPG / WEBP / AVIF / GIF allowed"), ok);
   },
 });
-
-// Hero clips (Veo mp4/webm) — bigger cap, own folder. Posters use the 6 MB image
-// `upload` above. Extension always comes from the validated mimetype.
-const heroStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "hero")),
-  filename: (_req, file, cb) => cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype)),
-});
 const heroVideoUpload = multer({
-  storage: heroStorage,
+  storage: r2.r2Configured ? memStorage : diskHero,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
   fileFilter: (_req, file, cb) => {
     const ok = /^video\/(mp4|webm)$/.test(file.mimetype);
@@ -140,13 +138,32 @@ const heroVideoUpload = multer({
   },
 });
 const heroPosterUpload = multer({
-  storage: heroStorage,
+  storage: r2.r2Configured ? memStorage : diskHero,
   limits: { fileSize: 6 * 1024 * 1024 }, // 6 MB
   fileFilter: (_req, file, cb) => {
     const ok = /^image\/(png|jpe?g|webp|avif)$/.test(file.mimetype);
     cb(ok ? null : new Error("Poster must be PNG / JPG / WEBP / AVIF"), ok);
   },
 });
+
+// A parsed multer file → stored URL. R2 (memory buffer) or disk (filename).
+async function finalizeUpload(file, sub) {
+  if (r2.r2Configured) {
+    const key = `${sub}/${crypto.randomBytes(10).toString("hex")}${extFromMime(file.mimetype)}`;
+    return r2.putObject(key, file.buffer, file.mimetype);
+  }
+  return `/uploads/${sub}/${file.filename}`;
+}
+
+// Remove a stored asset by its URL — from R2 if it's an R2 URL, else local disk.
+async function removeStored(url) {
+  if (!url) return;
+  if (r2.keyFromUrl(url)) { await r2.deleteByUrl(url); return; }
+  if (String(url).startsWith("/uploads/")) {
+    const f = path.join(UPLOAD_DIR, url.replace(/^\/uploads\//, ""));
+    try { fs.existsSync(f) && fs.unlinkSync(f); } catch {}
+  }
+}
 
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d" }));
 
@@ -1552,12 +1569,9 @@ app.delete("/api/admin/products/:id", requireAuth, requireAdmin, (req, res) => {
   db.transaction(() => {
     db.prepare("DELETE FROM cart_items WHERE product_id=?").run(id);
     // wishlists & hero_slides already have ON DELETE CASCADE
-    if (p.image) {
-      const f = path.join(UPLOAD_DIR, p.image.replace(/^\/uploads\//, ""));
-      try { fs.existsSync(f) && fs.unlinkSync(f); } catch {}
-    }
     db.prepare("DELETE FROM products WHERE id=?").run(id);
   })();
+  removeStored(p.image).catch(() => {}); // clean the image (R2/disk) after the tx
 
   res.json({ ok: true });
 });
@@ -1590,55 +1604,54 @@ app.post("/api/admin/imports/publish", requireAuth, requireAdmin, (req, res) => 
 // Bulk delete imported products (removes their downloaded images too).
 app.post("/api/admin/imports/delete", requireAuth, requireAdmin, (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const toRemove = [];
   db.transaction(() => ids.forEach(id => {
     const p = db.prepare("SELECT image FROM products WHERE id=? AND import_source IS NOT NULL").get(id);
     if (!p) return;
     if (db.prepare("SELECT 1 FROM order_items WHERE product_id=?").get(id)) return; // keep ordered items
     db.prepare("DELETE FROM cart_items WHERE product_id=?").run(id);
-    if (p.image) { const f = path.join(UPLOAD_DIR, p.image.replace(/^\/uploads\//, "")); try { fs.existsSync(f) && fs.unlinkSync(f); } catch {} }
+    if (p.image) toRemove.push(p.image);
     db.prepare("DELETE FROM products WHERE id=?").run(id);
   }))();
+  Promise.all(toRemove.map(u => removeStored(u).catch(() => {}))); // clean images after the tx
   res.json({ ok: true });
 });
 
 // Image upload for products + brands. URL param :kind = 'products' | 'brands'
 app.post("/api/admin/upload/:kind/:id", uploadLimit, requireAuth, requireAdmin, (req, res, next) => {
   if (!["products", "brands"].includes(req.params.kind)) return res.status(400).json({ error: "Invalid kind" });
-  upload.single("image")(req, res, (err) => {
+  upload.single("image")(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: "No file" });
-    const url = `/uploads/${req.params.kind}/${req.file.filename}`;
-    if (req.params.kind === "products") {
-      const prod = db.prepare("SELECT image FROM products WHERE id=?").get(req.params.id);
-      if (!prod) { try { fs.unlinkSync(req.file.path); } catch {} return res.status(404).json({ error: "Product not found" }); }
-      if (prod.image) {
-        const old = path.join(UPLOAD_DIR, prod.image.replace(/^\/uploads\//, ""));
-        try { fs.existsSync(old) && fs.unlinkSync(old); } catch {}
+    try {
+      if (req.params.kind === "products") {
+        const prod = db.prepare("SELECT image FROM products WHERE id=?").get(req.params.id);
+        if (!prod) return res.status(404).json({ error: "Product not found" });
+        const url = await finalizeUpload(req.file, "products");
+        await removeStored(prod.image);
+        db.prepare("UPDATE products SET image=? WHERE id=?").run(url, req.params.id);
+        return res.json({ ok: true, url });
       }
-      db.prepare("UPDATE products SET image=? WHERE id=?").run(url, req.params.id);
-    } else {
       const b = db.prepare("SELECT image FROM brands WHERE key=?").get(req.params.id);
-      if (!b) { try { fs.unlinkSync(req.file.path); } catch {} return res.status(404).json({ error: "Brand not found" }); }
-      if (b.image) {
-        const old = path.join(UPLOAD_DIR, b.image.replace(/^\/uploads\//, ""));
-        try { fs.existsSync(old) && fs.unlinkSync(old); } catch {}
-      }
+      if (!b) return res.status(404).json({ error: "Brand not found" });
+      const url = await finalizeUpload(req.file, "brands");
+      await removeStored(b.image);
       db.prepare("UPDATE brands SET image=? WHERE key=?").run(url, req.params.id);
+      res.json({ ok: true, url });
+    } catch (e) {
+      console.error("upload failed:", e?.message || e);
+      res.status(502).json({ error: "Upload failed" });
     }
-    res.json({ ok: true, url });
   });
 });
 
-app.delete("/api/admin/upload/:kind/:id", requireAuth, requireAdmin, (req, res) => {
+app.delete("/api/admin/upload/:kind/:id", requireAuth, requireAdmin, async (req, res) => {
   if (!["products", "brands"].includes(req.params.kind)) return res.status(400).json({ error: "Invalid kind" });
   const table = req.params.kind === "products" ? "products" : "brands";
   const idCol = table === "brands" ? "key" : "id";
   const row = db.prepare(`SELECT image FROM ${table} WHERE ${idCol}=?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: "Not found" });
-  if (row.image) {
-    const f = path.join(UPLOAD_DIR, row.image.replace(/^\/uploads\//, ""));
-    try { fs.existsSync(f) && fs.unlinkSync(f); } catch {}
-  }
+  await removeStored(row.image);
   db.prepare(`UPDATE ${table} SET image=NULL WHERE ${idCol}=?`).run(req.params.id);
   res.json({ ok: true });
 });
@@ -1949,40 +1962,38 @@ app.patch("/api/admin/hero-slides/:id", requireAuth, requireAdmin, (req, res) =>
   );
   res.json({ ok: true });
 });
-app.delete("/api/admin/hero-slides/:id", requireAuth, requireAdmin, (req, res) => {
-  // Clean up any uploaded clip/poster that lives under our /uploads (leave CDN URLs alone).
+app.delete("/api/admin/hero-slides/:id", requireAuth, requireAdmin, async (req, res) => {
+  // Clean up any uploaded clip/poster we own (R2 or disk); leave external URLs alone.
   const cur = db.prepare("SELECT custom_video, custom_poster FROM hero_slides WHERE id=?").get(req.params.id);
-  if (cur) for (const rel of [cur.custom_video, cur.custom_poster]) unlinkUpload(rel);
+  if (cur) for (const rel of [cur.custom_video, cur.custom_poster]) await removeStored(rel);
   db.prepare("DELETE FROM hero_slides WHERE id=?").run(req.params.id);
   res.json({ ok: true });
 });
 
-// Remove an uploaded file we own (path under /uploads). No-op for external URLs.
-function unlinkUpload(rel) {
-  if (!rel || !rel.startsWith("/uploads/")) return;
-  const f = path.join(UPLOAD_DIR, rel.replace(/^\/uploads\//, ""));
-  try { fs.existsSync(f) && fs.unlinkSync(f); } catch {}
-}
-
 // Attach / replace / clear a hero slide's clip or poster. Field name matches the
-// media kind ("video" | "poster"); the file is stored under /uploads/hero.
+// media kind ("video" | "poster"); stored on R2 (or /uploads/hero on disk).
 function heroMediaRoutes(kind, column, mw) {
   app.post(`/api/admin/hero-slides/:id/${kind}`, uploadLimit, requireAuth, requireAdmin, (req, res) => {
     const slide = db.prepare("SELECT * FROM hero_slides WHERE id=?").get(req.params.id);
     if (!slide) return res.status(404).json({ error: "Slide not found" });
-    mw.single(kind)(req, res, (err) => {
+    mw.single(kind)(req, res, async (err) => {
       if (err) return res.status(400).json({ error: err.message });
       if (!req.file) return res.status(400).json({ error: "No file" });
-      unlinkUpload(slide[column]); // drop the previous upload if we're replacing one
-      const url = `/uploads/hero/${req.file.filename}`;
-      db.prepare(`UPDATE hero_slides SET ${column}=? WHERE id=?`).run(url, req.params.id);
-      res.json({ ok: true, url });
+      try {
+        const url = await finalizeUpload(req.file, "hero");
+        await removeStored(slide[column]); // drop the previous upload if replacing
+        db.prepare(`UPDATE hero_slides SET ${column}=? WHERE id=?`).run(url, req.params.id);
+        res.json({ ok: true, url });
+      } catch (e) {
+        console.error("hero upload failed:", e?.message || e);
+        res.status(502).json({ error: "Upload failed" });
+      }
     });
   });
-  app.delete(`/api/admin/hero-slides/:id/${kind}`, requireAuth, requireAdmin, (req, res) => {
+  app.delete(`/api/admin/hero-slides/:id/${kind}`, requireAuth, requireAdmin, async (req, res) => {
     const slide = db.prepare("SELECT * FROM hero_slides WHERE id=?").get(req.params.id);
     if (!slide) return res.status(404).json({ error: "Slide not found" });
-    unlinkUpload(slide[column]);
+    await removeStored(slide[column]);
     db.prepare(`UPDATE hero_slides SET ${column}=NULL WHERE id=?`).run(req.params.id);
     res.json({ ok: true });
   });
@@ -2065,24 +2076,22 @@ app.patch("/api/admin/journal/:id", requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/journal/:id", requireAuth, requireAdmin, (req, res) => {
+app.delete("/api/admin/journal/:id", requireAuth, requireAdmin, async (req, res) => {
   const p = db.prepare("SELECT cover_image FROM journal_posts WHERE id=?").get(req.params.id);
   if (!p) return res.status(404).json({ error: "Not found" });
-  if (p.cover_image) {
-    const f = path.join(UPLOAD_DIR, p.cover_image.replace(/^\/uploads\//, ""));
-    try { fs.existsSync(f) && fs.unlinkSync(f); } catch {}
-  }
+  await removeStored(p.cover_image);
   db.prepare("DELETE FROM journal_posts WHERE id=?").run(req.params.id);
   res.json({ ok: true });
 });
 
 // Default Open Graph image upload (single global image).
 fs.mkdirSync(path.join(UPLOAD_DIR, "seo"), { recursive: true });
+const seoDisk = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "seo")),
+  filename:    (_req, file, cb) => cb(null, "og" + extFromMime(file.mimetype)),
+});
 const seoUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "seo")),
-    filename:    (_req, file, cb) => cb(null, "og" + extFromMime(file.mimetype)),
-  }),
+  storage: r2.r2Configured ? memStorage : seoDisk,
   limits: { fileSize: 6 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ok = /^image\/(png|jpe?g|webp)$/.test(file.mimetype);
@@ -2090,23 +2099,28 @@ const seoUpload = multer({
   },
 });
 app.post("/api/admin/upload/seo", uploadLimit, requireAuth, requireAdmin, (req, res) => {
-  seoUpload.single("image")(req, res, (err) => {
+  seoUpload.single("image")(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: "No file" });
-    const url = "/uploads/seo/" + req.file.filename;
-    db.prepare(`INSERT INTO settings (key, value, updated_at) VALUES ('seo.og_image', ?, strftime('%s','now'))
-                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`).run(JSON.stringify(url));
-    res.json({ ok: true, url });
+    try {
+      const prev = JSON.parse(db.prepare("SELECT value FROM settings WHERE key='seo.og_image'").get()?.value || "null");
+      const url = await finalizeUpload(req.file, "seo");
+      await removeStored(prev);
+      db.prepare(`INSERT INTO settings (key, value, updated_at) VALUES ('seo.og_image', ?, strftime('%s','now'))
+                  ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`).run(JSON.stringify(url));
+      res.json({ ok: true, url });
+    } catch (e) { console.error("seo upload failed:", e?.message || e); res.status(502).json({ error: "Upload failed" }); }
   });
 });
 
 // Journal cover image upload — re-uses multer with a 'journal' subfolder.
 fs.mkdirSync(path.join(UPLOAD_DIR, "journal"), { recursive: true });
+const journalDisk = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "journal")),
+  filename:    (_req, file, cb) => cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype)),
+});
 const journalUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, path.join(UPLOAD_DIR, "journal")),
-    filename:    (_req, file, cb) => cb(null, crypto.randomBytes(10).toString("hex") + extFromMime(file.mimetype)),
-  }),
+  storage: r2.r2Configured ? memStorage : journalDisk,
   limits: { fileSize: 6 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ok = /^image\/(png|jpe?g|webp|avif|gif)$/.test(file.mimetype);
@@ -2114,18 +2128,17 @@ const journalUpload = multer({
   },
 });
 app.post("/api/admin/upload/journal/:id", uploadLimit, requireAuth, requireAdmin, (req, res, next) => {
-  journalUpload.single("image")(req, res, (err) => {
+  journalUpload.single("image")(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: "No file" });
     const post = db.prepare("SELECT cover_image FROM journal_posts WHERE id=?").get(req.params.id);
-    if (!post) { try { fs.unlinkSync(req.file.path); } catch {} return res.status(404).json({ error: "Post not found" }); }
-    if (post.cover_image) {
-      const old = path.join(UPLOAD_DIR, post.cover_image.replace(/^\/uploads\//, ""));
-      try { fs.existsSync(old) && fs.unlinkSync(old); } catch {}
-    }
-    const url = `/uploads/journal/${req.file.filename}`;
-    db.prepare("UPDATE journal_posts SET cover_image=? WHERE id=?").run(url, req.params.id);
-    res.json({ ok: true, url });
+    if (!post) return res.status(404).json({ error: "Post not found" });
+    try {
+      const url = await finalizeUpload(req.file, "journal");
+      await removeStored(post.cover_image);
+      db.prepare("UPDATE journal_posts SET cover_image=? WHERE id=?").run(url, req.params.id);
+      res.json({ ok: true, url });
+    } catch (e) { console.error("journal upload failed:", e?.message || e); res.status(502).json({ error: "Upload failed" }); }
   });
 });
 app.delete("/api/admin/upload/journal/:id", requireAuth, requireAdmin, (req, res) => {
