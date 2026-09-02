@@ -35,7 +35,7 @@ function Tile({ p, onAdd, h }) {
       <div className="vit-tile" style={{ position: "relative", overflow: "hidden", background: "linear-gradient(102deg,#FAFBFB," + V.porcelain + " 52%,#F7F9F8)", border: "1px solid #E4E9E8", borderBottom: "1px solid " + V.rule, height: h, display: "flex", alignItems: "flex-end", justifyContent: "center", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.92), inset 0 -40px 52px -40px rgba(16,16,16,0.12)" }}>
         <div style={{ position: "absolute", left: 0, right: 0, bottom: "15%", height: 1, background: "rgba(16,16,16,0.11)" }}></div>
         <div style={{ width: "40%", height: "64%", marginBottom: "15%", background: "linear-gradient(96deg,#FFFFFF,#E7ECEB 58%,#F6F8F7)", border: "1px solid #E1E6E5", borderBottom: "none" }}></div>
-        {p.image && <img src={p.image} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />}
+        {p.image && <img src={p.image} alt={[p.name, p.italic, p.brandName && "— " + p.brandName].filter(Boolean).join(" ")} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />}
         <div className="vit-glint" style={{ position: "absolute", top: "-30%", bottom: "-30%", left: "-60%", width: "70%", opacity: 0, transform: "translateX(-40%)", background: "linear-gradient(100deg,transparent 20%,rgba(255,255,255,0.86) 50%,transparent 80%)", pointerEvents: "none" }}></div>
       </div>
       <div style={{ borderTop: "1px solid " + V.ink }}></div>

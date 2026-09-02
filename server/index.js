@@ -2356,6 +2356,7 @@ app.get("/product/:id", (req, res) => {
   const p = productById(req.params.id);
   if (!p || !p.isActive) {
     // Still serve the page (it will show its own 404 state) but with sensible meta.
+    res.status(404);
     return renderHtml(req, res, "product.html", { title: "Product not found — VITRINE", description: "" });
   }
   const s = settingsAll();
@@ -2409,6 +2410,7 @@ app.get("/brand/:key", (req, res) => {
   const s = settingsAll();
   const siteName = s["site.name"] || "VITRINE";
   if (!b) {
+    res.status(404);
     return renderHtml(req, res, "Shop.html", { settingsCache: s, title: `Brand not found — ${siteName}` });
   }
   const productCount = db.prepare("SELECT COUNT(*) c FROM products WHERE brand_key=? AND (is_active IS NULL OR is_active=1)").get(b.key).c;
@@ -2435,6 +2437,7 @@ app.get("/category/:key", (req, res) => {
   const s = settingsAll();
   const siteName = s["site.name"] || "VITRINE";
   if (!c) {
+    res.status(404);
     return renderHtml(req, res, "Shop.html", { settingsCache: s, title: `Category not found — ${siteName}` });
   }
   const n = db.prepare("SELECT COUNT(*) c FROM products WHERE category=? AND (is_active IS NULL OR is_active=1)").get(c.key).c;
@@ -2609,14 +2612,14 @@ app.get("/sitemap.xml", (req, res) => {
   }
   const now = new Date().toISOString().slice(0, 10);
   const urls = [];
-  const url = (loc, lastmod, priority) => urls.push({ loc: absoluteUrl(req, loc), lastmod: lastmod || now, priority });
+  const url = (loc, lastmod, priority, image) => urls.push({ loc: absoluteUrl(req, loc), lastmod: lastmod || now, priority, image });
   url("/", now, "1.0");
   url("/Shop.html", now, "0.9");
   url("/journal", now, "0.7");
   url("/contact.html", now, "0.5");
 
-  const products = db.prepare("SELECT id, created_at FROM products WHERE (is_active IS NULL OR is_active = 1)").all();
-  for (const p of products) url("/product/" + p.id, new Date((p.created_at || Date.now()/1000) * 1000).toISOString().slice(0,10), "0.8");
+  const products = db.prepare("SELECT id, image, created_at FROM products WHERE (is_active IS NULL OR is_active = 1)").all();
+  for (const p of products) url("/product/" + p.id, new Date((p.created_at || Date.now()/1000) * 1000).toISOString().slice(0,10), "0.8", p.image ? absoluteUrl(req, p.image) : null);
   const brands = db.prepare("SELECT key FROM brands").all();
   for (const b of brands) url("/brand/" + b.key, now, "0.7");
   const cats = db.prepare("SELECT key FROM categories").all();
@@ -2630,8 +2633,8 @@ app.get("/sitemap.xml", (req, res) => {
 
   const body = [
     `<?xml version="1.0" encoding="UTF-8"?>`,
-    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`,
-    ...urls.map(u => `  <url>\n    <loc>${escapeHtml(u.loc)}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n    <priority>${u.priority}</priority>\n  </url>`),
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">`,
+    ...urls.map(u => `  <url>\n    <loc>${escapeHtml(u.loc)}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n    <priority>${u.priority}</priority>${u.image ? `\n    <image:image>\n      <image:loc>${escapeHtml(u.image)}</image:loc>\n    </image:image>` : ""}\n  </url>`),
     `</urlset>`,
   ].join("\n");
   res.set("Content-Type", "application/xml; charset=utf-8").send(body);
