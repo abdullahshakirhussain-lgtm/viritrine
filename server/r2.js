@@ -2,7 +2,7 @@
 // uploads go to the bucket and are served from R2_PUBLIC_BASE; otherwise the app
 // falls back to local disk (so local dev works with no R2 config). Mirrors the
 // "unset key → disabled, app keeps working" pattern used by ai.js / sms.js.
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 
 const r2Configured = !!(
   process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY &&
@@ -45,4 +45,21 @@ async function deleteByUrl(url) {
   catch { return false; }
 }
 
-module.exports = { r2Configured, putObject, publicUrl, keyFromUrl, deleteByUrl };
+// Raw get/put/delete against an arbitrary bucket (used for the PRIVATE db bucket,
+// which must never be the public media bucket). Returns a Buffer, or null on 404.
+function makeClient() { return client; }
+async function getObjectFrom(bucket, key) {
+  if (!client) return null;
+  try {
+    const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    return Buffer.from(await res.Body.transformToByteArray());
+  } catch (e) {
+    if (e.name === "NoSuchKey" || e.$metadata?.httpStatusCode === 404) return null;
+    throw e;
+  }
+}
+async function putObjectTo(bucket, key, body, contentType) {
+  await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType || "application/octet-stream" }));
+}
+
+module.exports = { r2Configured, putObject, publicUrl, keyFromUrl, deleteByUrl, getObjectFrom, putObjectTo, makeClient };

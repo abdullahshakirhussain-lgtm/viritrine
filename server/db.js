@@ -8,6 +8,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const raw = new DatabaseSync(path.join(DATA_DIR, "vitrine.db"));
 raw.exec("PRAGMA journal_mode = WAL");
 raw.exec("PRAGMA foreign_keys = ON");
+raw.exec("PRAGMA busy_timeout = 8000"); // wait for locks (concurrent scripts/server) instead of erroring
 
 // Tiny better-sqlite3-compatible adapter so the rest of the code reads naturally:
 //   db.prepare(sql).run(arg1, arg2, ...)  – positional

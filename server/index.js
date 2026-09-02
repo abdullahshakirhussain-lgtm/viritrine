@@ -2719,4 +2719,7 @@ try {
 
 app.listen(PORT, () => {
   console.log(`VITRINE running → http://localhost:${PORT}`);
+  // Periodic + on-shutdown DB snapshots to the private R2 bucket (no-op unless
+  // R2_DB_BUCKET is set). Restore-on-boot lives in server/boot.js.
+  try { require("./dbbackup").startBackups(); } catch (e) { console.error("db backup init failed:", e?.message || e); }
 });
