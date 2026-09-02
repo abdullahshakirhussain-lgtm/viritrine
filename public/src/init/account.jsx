@@ -1,0 +1,210 @@
+/* ── "The Key" membership card ── */
+function MembershipCard() {
+  const [m, setM] = React.useState(null);
+  const [code, setCode] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const load = () => window.api.get("/api/membership").then(setM).catch(() => {});
+  React.useEffect(() => { load(); }, []);
+  if (!m) return null;
+
+  const redeem = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try { await window.api.post("/api/membership/redeem", { code }); setCode(""); load(); window.dispatchEvent(new CustomEvent("cart:changed")); }
+    catch (ex) { setErr(ex.message || "Couldn't redeem that code"); }
+    finally { setBusy(false); }
+  };
+
+  if (m.tier === "premium") {
+    return (
+      <div style={{ padding: "22px 24px", marginBottom: 32, background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)" }}>
+        <div style={{ fontSize: 10.5, letterSpacing: "0.24em", textTransform: "uppercase", color: "var(--gold)" }}>The Key · Premium member{m.tier_since ? " since " + new Date(m.tier_since * 1000).getFullYear() : ""}</div>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 30, margin: "6px 0 14px" }}>You hold <em style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", color: "var(--gold)" }}>the Key</em>.</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 28px", fontSize: 13, color: "rgba(255,255,255,0.85)" }}>
+          <span>✦ Free delivery on every order</span>
+          {m.discount_pct > 0 && <span>✦ {m.discount_pct}% off, always</span>}
+          <span>✦ First refusal on new arrivals</span>
+        </div>
+        <a href="backroom.html" style={{ display: "inline-block", marginTop: 16, fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--paper)", borderBottom: "1px solid var(--gold)", paddingBottom: 3 }}>The Back Room — book an appointment →</a>
+      </div>
+    );
+  }
+
+  const pct = Math.min(100, Math.round((m.lifetime_spend / m.threshold) * 100));
+  const remaining = Math.max(0, m.threshold - m.lifetime_spend);
+  return (
+    <div style={{ padding: "22px 24px", marginBottom: 32, background: "var(--paper)", border: "1px solid var(--line-2)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ fontSize: 10.5, letterSpacing: "0.24em", textTransform: "uppercase", color: "var(--ink-3)" }}>Standard membership</div>
+        <div style={{ fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--gold-2)" }}>The Key · By invitation</div>
+      </div>
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 26, margin: "6px 0 16px" }}>Toward <em style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", color: "var(--wine)" }}>the Key</em>.</div>
+      <div style={{ height: 4, background: "var(--bg-2)", position: "relative", marginBottom: 8 }}>
+        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pct + "%", background: "var(--wine)" }}></div>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--ink-2)", marginBottom: 18 }}>
+        {window.fmtLKR(m.lifetime_spend)} of {window.fmtLKR(m.threshold)} lifetime · {remaining > 0 ? window.fmtLKR(remaining) + " to become eligible" : "You're eligible — watch for your invitation."}
+      </div>
+      <form onSubmit={redeem} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <input className="input" value={code} onChange={e => setCode(e.target.value)} placeholder="Have an invitation code?" style={{ flex: "1 1 220px", maxWidth: 300 }} />
+        <button className="btn-solid" disabled={busy || !code}>{busy ? "Redeeming…" : "Redeem"}</button>
+      </form>
+      {err && <div style={{ color: "var(--wine)", fontSize: 12, marginTop: 8 }}>{err}</div>}
+    </div>
+  );
+}
+
+function AccountPage() {
+  const [me, setMe] = React.useState(null);
+  const [orders, setOrders] = React.useState([]);
+  const [tab, setTab] = React.useState(window.location.hash.replace("#", "") || "overview");
+  const [saved, setSaved] = React.useState("");
+
+  React.useEffect(() => {
+    window.api.get("/api/auth/me").then(r => {
+      if (!r.user) { window.location.href = "login.html?next=" + encodeURIComponent("/account.html"); return; }
+      setMe(r.user);
+    });
+    window.api.get("/api/orders/me").then(setOrders).catch(() => {});
+    const onHash = () => setTab(window.location.hash.replace("#", "") || "overview");
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const save = async (e) => {
+    e.preventDefault();
+    const r = await window.api.patch("/api/auth/me", {
+      first_name: me.first_name, last_name: me.last_name, phone: me.phone,
+    });
+    setMe(r.user); setSaved("Saved");
+    setTimeout(() => setSaved(""), 1800);
+  };
+
+  const signOut = async () => {
+    await window.api.post("/api/auth/logout");
+    window.location.href = "/";
+  };
+
+  if (!me) return <PageShell><div className="page-wrap"><div className="cart-empty"><h3>Loading…</h3></div></div></PageShell>;
+
+  return (
+    <PageShell>
+      <div className="page-wrap">
+        <div className="page-head">
+          <div className="eyebrow"><span>Member · {new Date(me.created_at * 1000).getFullYear() || ""}</span></div>
+          <h1>Hello, <em>{me.first_name || me.email.split("@")[0]}</em></h1>
+          <p>Manage your orders, addresses, and personal details.</p>
+        </div>
+
+        {me.is_admin && (
+          <div style={{
+            display:"flex", justifyContent:"space-between", alignItems:"center", gap:14, flexWrap:"wrap",
+            padding:"16px 22px", marginBottom:32,
+            background:"var(--wine)", color:"var(--paper)",
+            border:"1px solid var(--wine)",
+          }}>
+            <div>
+              <div style={{fontSize:10.5, letterSpacing:"0.22em", textTransform:"uppercase", opacity:0.7}}>Admin access</div>
+              <div style={{fontFamily:"var(--font-display)", fontSize:22, marginTop:2}}>You're signed in as an admin.</div>
+            </div>
+            <a href="admin.html" className="btn-solid" style={{background:"var(--paper)", color:"var(--wine)"}}>Go to Admin Dashboard ⟶</a>
+          </div>
+        )}
+
+        <MembershipCard />
+
+        <div className="acct-grid">
+          <aside className="acct-side">
+            <a href="#overview" className={tab === "overview" ? "on" : ""}>Overview</a>
+            <a href="#orders"   className={tab === "orders" ? "on" : ""}>Orders</a>
+            <a href="#profile"  className={tab === "profile" ? "on" : ""}>Profile</a>
+            <a href="wishlist.html">Wishlist</a>
+            <a href="contact.html">Help &amp; Returns</a>
+            <button onClick={signOut} className="signout" style={{display:"block",border:0,background:"none",padding:"10px 0",cursor:"pointer"}}>Sign out ⟶</button>
+          </aside>
+
+          <div>
+            {tab === "overview" && (
+              <>
+                <div className="order-card">
+                  <div style={{fontFamily:"var(--font-display)",fontSize:24,marginBottom:8}}>Latest order</div>
+                  {orders[0] ? (
+                    <>
+                      <div className="top">
+                        <span className="num">{orders[0].number}</span>
+                        <span className={"status " + (orders[0].status || "pending")}>{(orders[0].status || "pending").replace("_"," ")}</span>
+                      </div>
+                      <div className="grand"><span>Placed {new Date(orders[0].created_at * 1000).toLocaleDateString()}</span><span>{window.fmtLKR(orders[0].total)}</span></div>
+                      <div style={{marginTop:10}}><a className="btn-ghost" href={"track.html?number=" + orders[0].number}>View order ⟶</a></div>
+                    </>
+                  ) : (
+                    <p style={{margin:0,color:"var(--ink-3)"}}>No orders yet. <a href="Shop.html" style={{color:"var(--wine)"}}>Start shopping ⟶</a></p>
+                  )}
+                </div>
+                <div className="order-card">
+                  <div style={{fontFamily:"var(--font-display)",fontSize:24,marginBottom:8}}>Profile</div>
+                  <div style={{fontSize:13,color:"var(--ink-2)"}}>
+                    {[me.first_name, me.last_name].filter(Boolean).join(" ") || me.email}<br/>
+                    {me.email}<br/>
+                    {me.phone || "—"}
+                  </div>
+                  <div style={{marginTop:10}}><a className="btn-ghost" href="#profile">Edit profile ⟶</a></div>
+                </div>
+              </>
+            )}
+
+            {tab === "orders" && (
+              <>
+                {orders.length === 0 ? (
+                  <div className="cart-empty"><h3>No orders yet.</h3><p>When you place an order it'll appear here.</p><a className="btn-solid" href="Shop.html">Shop the shelf ⟶</a></div>
+                ) : (
+                  orders.map(o => (
+                    <div className="order-card" key={o.id}>
+                      <div className="top">
+                        <span className="num">{o.number}</span>
+                        <span className={"status " + (o.status || "pending")}>{(o.status || "pending").replace("_"," ")}</span>
+                      </div>
+                      <div className="lines">
+                        <div>Placed {new Date(o.created_at * 1000).toLocaleDateString()}</div>
+                        <div>Delivery: {o.delivery === "express" ? "Express" : "Island Standard"}</div>
+                        <div>Payment: {({card:"Card", cod:"Cash on Delivery", koko:"KOKO"})[o.payment]}</div>
+                      </div>
+                      <div className="grand"><span>Total</span><span>{window.fmtLKR(o.total)}</span></div>
+                      <div style={{marginTop:10}}><a className="btn-ghost" href={"track.html?number=" + o.number}>Track order ⟶</a></div>
+                    </div>
+                  ))
+                )}
+              </>
+            )}
+
+            {tab === "profile" && (
+              <form onSubmit={save} className="checkout-section" style={{padding:0,border:0}}>
+                <h3 style={{marginTop:0}}>Profile</h3>
+                <div className="grid-2">
+                  <div className="field"><label>First name</label>
+                    <input className="input" value={me.first_name || ""} onChange={e => setMe({...me, first_name: e.target.value})} />
+                  </div>
+                  <div className="field"><label>Last name</label>
+                    <input className="input" value={me.last_name || ""} onChange={e => setMe({...me, last_name: e.target.value})} />
+                  </div>
+                </div>
+                <div className="field" style={{margin:"14px 0"}}>
+                  <label>Email</label>
+                  <input className="input" value={me.email} disabled />
+                </div>
+                <div className="field" style={{marginBottom:14}}>
+                  <label>Phone</label>
+                  <input className="input" value={me.phone || ""} onChange={e => setMe({...me, phone: e.target.value})} />
+                </div>
+                <button className="btn-solid">Save changes</button>
+                {saved && <span style={{marginLeft:14,color:"var(--teal)",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase"}}>{saved}</span>}
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+mountPage(AccountPage);
