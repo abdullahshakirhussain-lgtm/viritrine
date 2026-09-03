@@ -11,7 +11,7 @@ const V = {
   mono: "'IBM Plex Mono', ui-monospace, monospace",
 };
 const PAD = "var(--vit-pad)";
-const NAV_LINKS = [["SHOP", "#shelf"], ["NEW IN", "#arrivals"], ["SALE", "#sale"], ["BRANDS", "#maisons"], ["STORIES", "#journal"]];
+const NAV_LINKS = [["SHOP", "/Shop.html"], ["NEW IN", "/Shop.html#new=1"], ["SALE", "/Shop.html#sale=1"], ["BRANDS", "#maisons"], ["STORIES", "#journal"]];
 const SKIN_BROWSE = [
   ["oily", "Oily", "Balance, oil-control & clarity"],
   ["dry", "Dry", "Rich moisture & barrier repair"],

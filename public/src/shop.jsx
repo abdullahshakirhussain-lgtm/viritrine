@@ -751,7 +751,8 @@ function ShopPage() {
       })
       .catch(() => setLivePR(null));
   }, []);
-  const sourcePR = livePR || PRODUCTS;
+  const loading = livePR === null;
+  const sourcePR = livePR || []; // never fall back to the static demo set
 
   const filtered = React.useMemo(
     () => sortProducts(filterProducts(sourcePR, filters), sort),
@@ -852,7 +853,9 @@ function ShopPage() {
       <ActiveFilters filters={filters} setFilters={setFilters} sort={sort} />
 
       <div className="shop-grid-wrap">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="shop-loading" style={{ padding: "90px 0", textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: "0.14em", color: "var(--ink-3)" }}>LOADING THE SHELF…</div>
+        ) : filtered.length === 0 ? (
           <div className="empty-state">
             <div className="glyph">
               <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" strokeLinecap="round"/><path d="m20 20-4-4" strokeLinecap="round"/></svg>
@@ -881,10 +884,11 @@ function ShopPage() {
             ))}
           </div>
         )}
-        <div className="shop-foot">
-          <div className="count-line">Showing {filtered.length} of {filtered.length} products</div>
-          {filtered.length > 0 && <button className="btn-ghost">Load more (0 remaining)</button>}
-        </div>
+        {!loading && (
+          <div className="shop-foot">
+            <div className="count-line">Showing {filtered.length} product{filtered.length === 1 ? "" : "s"}</div>
+          </div>
+        )}
       </div>
 
       <section className="you-may">
