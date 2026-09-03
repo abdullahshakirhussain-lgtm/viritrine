@@ -57,6 +57,12 @@ async function backupNow(reason) {
 
 function startBackups(intervalMs = 120000) {
   if (!enabled()) { if (r2.r2Configured) console.log("db: R2_DB_BUCKET unset — DB backups OFF"); return; }
+  // Never back up a demo/seed-only DB — it would overwrite a real R2 snapshot with
+  // placeholder data (e.g. a fresh container that auto-seeded before real data loaded).
+  // Only arm once real catalogue data is present.
+  let real = false;
+  try { real = require("./db").prepare("SELECT 1 FROM products WHERE import_source IS NOT NULL LIMIT 1").get() != null; } catch (e) {}
+  if (!real) { console.log("db: seed-only DB — backups OFF (protects the R2 snapshot)"); return; }
   const timer = setInterval(() => backupNow("interval"), intervalMs);
   timer.unref && timer.unref();
   let closing = false;
