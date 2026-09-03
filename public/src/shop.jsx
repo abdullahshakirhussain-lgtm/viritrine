@@ -736,28 +736,58 @@ function ShopPage() {
   const [toast, setToast] = React.useState(null);
   const [wishlist, setWishlist] = React.useState(new Set());
 
-  const [livePR, setLivePR] = React.useState(null);
-  React.useEffect(() => {
-    window.api.get("/api/products?limit=500")
-      .then(rs => {
-        // Normalize API shape to match local PRODUCTS shape (sale, off, isNew, etc).
-        const norm = rs.map(p => ({
-          ...p,
-          liquidTop: p.liquidTop,
-          isNew: !!p.isNew,
-          isBestseller: !!p.isBestseller,
-        }));
-        setLivePR(norm);
-      })
-      .catch(() => setLivePR(null));
-  }, []);
-  const loading = livePR === null;
-  const sourcePR = livePR || []; // never fall back to the static demo set
+  // Server-driven, filtered pagination: the whole catalogue (all 3,700+) is
+  // reachable, category/brand/skin pages are complete, and the DOM stays light
+  // (a page at a time) instead of dumping 500 tiles at once.
+  const PAGE = 48;
+  const normalize = (p) => ({ ...p, isNew: !!p.isNew, isBestseller: !!p.isBestseller });
+  const buildQuery = React.useCallback((off) => {
+    const q = new URLSearchParams();
+    if (filters.category)   q.set("category", filters.category);
+    if (filters.brand)      q.set("brand", filters.brand);
+    if (filters.concern)    q.set("concern", filters.concern);
+    if (filters.skin)       q.set("skin", filters.skin);
+    if (filters.sale)       q.set("sale", "1");
+    if (filters.newOnly)    q.set("isNew", "1");
+    if (filters.ceylonOnly) q.set("ceylon", "1");
+    if (filters.q)          q.set("q", filters.q);
+    if (sort && sort !== "featured") q.set("sort", sort);
+    q.set("limit", String(PAGE)); q.set("offset", String(off));
+    return "/api/products?" + q.toString();
+  }, [filters, sort]);
 
-  const filtered = React.useMemo(
-    () => sortProducts(filterProducts(sourcePR, filters), sort),
-    [filters, sort, sourcePR]
-  );
+  const [items, setItems] = React.useState(null);
+  const [pageOffset, setPageOffset] = React.useState(0);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+
+  // (Re)load the first page whenever filters or sort change.
+  React.useEffect(() => {
+    let cancelled = false;
+    setItems(null); setPageOffset(0); setHasMore(false);
+    window.api.get(buildQuery(0))
+      .then(rs => { if (cancelled) return; const n = (rs || []).map(normalize); setItems(n); setPageOffset(n.length); setHasMore((rs || []).length === PAGE); })
+      .catch(() => { if (!cancelled) setItems([]); });
+    return () => { cancelled = true; };
+  }, [buildQuery]);
+
+  const loadMore = () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    window.api.get(buildQuery(pageOffset))
+      .then(rs => { const n = (rs || []).map(normalize); setItems(prev => [...(prev || []), ...n]); setPageOffset(o => o + n.length); setHasMore((rs || []).length === PAGE); })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  };
+
+  const loading = items === null;
+  const filtered = items || []; // server already filtered + sorted
+
+  // Cross-sell "More on sale" rail — independent of the grid's current filter.
+  const [salePR, setSalePR] = React.useState([]);
+  React.useEffect(() => {
+    window.api.get("/api/products?sale=1&sort=off-desc&limit=12").then(rs => setSalePR((rs || []).map(normalize))).catch(() => {});
+  }, []);
 
   const activeCount =
     (filters.category ? 1 : 0) + (filters.brand ? 1 : 0) + (filters.concern ? 1 : 0) +
@@ -886,16 +916,21 @@ function ShopPage() {
         )}
         {!loading && (
           <div className="shop-foot">
-            <div className="count-line">Showing {filtered.length} product{filtered.length === 1 ? "" : "s"}</div>
+            <div className="count-line">Showing {filtered.length}{hasMore ? "+" : ""} product{filtered.length === 1 ? "" : "s"}</div>
+            {hasMore && (
+              <button className="btn-ghost" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      <section className="you-may">
+      {salePR.length > 0 && <section className="you-may">
         <h3>More on <em>sale</em></h3>
         <div className="edit-scroller-wrap">
           <div className="edit-scroller">
-            {sourcePR.filter(p => p.sale).slice(0, 10).map((p) => {
+            {salePR.slice(0, 10).map((p) => {
               const b = BRANDS[p.brand] || { name: p.brandName, loc: p.brandLoc, accent: undefined, font: "Italiana, serif" };
               const now = p.sale || p.price;
               return (
@@ -918,7 +953,7 @@ function ShopPage() {
             })}
           </div>
         </div>
-      </section>
+      </section>}
 
       <BrandStrip />
       <Footer name={tw.shopName} tagline={tw.shopTagline} />
