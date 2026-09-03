@@ -31,12 +31,27 @@ function Imports() {
   const publish = async (ids) => { if (!ids.length) return; await window.api.post("/api/admin/imports/publish", { ids }); load(); };
   const remove = async (ids, label) => { if (!ids.length) return; if (!adminConfirm("Delete " + (label || (ids.length + " item(s)")) + "? This removes the draft and its downloaded image.")) return; await window.api.post("/api/admin/imports/delete", { ids }); load(); };
 
+  const [reloading, setReloading] = React.useState(false);
+  const reloadFromR2 = async () => {
+    if (!adminConfirm("Reload the whole catalogue from the R2 snapshot? Use this after a bulk edit was pushed. The site restarts (~30s) and any un-pushed live changes are replaced.")) return;
+    setReloading(true);
+    try {
+      const r = await window.api.post("/api/admin/db/reload");
+      alert("Reloading " + (r.products || "") + " products — the site will restart in ~30 seconds, then refresh.");
+    } catch (e) { alert("Reload failed: " + (e.message || e)); }
+    finally { setReloading(false); }
+  };
+
   return (
     <AdminShell active="imports" eyebrow="Competitor seed → drafts" title={<>Import <em>review</em></>}>
       <div style={{ background: "var(--bg-2)", border: "1px solid var(--line)", padding: "14px 16px", fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
         Drafts pulled from competitor Shopify stores. They're <b>unpublished</b> until you publish them.
         The images and descriptions are the competitor's — <b>open Edit and replace them with your own before publishing</b>.
         To fetch (or re-fetch) products, run <code>node scripts/import.js</code> from the project — re-runs skip anything already imported.
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button className="btn-ghost" onClick={reloadFromR2} disabled={reloading}>{reloading ? "Reloading…" : "⟳ Reload catalogue from R2"}</button>
+          <span style={{ color: "var(--ink-3)", fontSize: 12 }}>Applies a bulk edit pushed via <code>node scripts/db-push.js</code> — restarts the site (~30s).</span>
+        </div>
       </div>
 
       {data === null ? <p>Loading…</p> :

@@ -10,7 +10,7 @@ const backup = require(path.join(__dirname, "..", "server", "dbbackup"));
     console.error("Not configured — set R2_DB_BUCKET (a PRIVATE bucket) + R2_* in .env, run with --env-file=.env");
     process.exit(1);
   }
-  const n = await backup.backupNow("manual push");
-  console.log(n ? "Pushed local DB to R2. Redeploy Railway to restore it." : "Push failed — check R2_DB_BUCKET / credentials.");
+  const n = await backup.pushExternal();
+  console.log(n ? `Pushed local DB to R2 (${(n/1e6).toFixed(2)} MB) + bumped push-token.\nClick "Reload catalogue from R2" in the admin (or redeploy) to apply it live.` : "Push failed — check R2_DB_BUCKET / credentials.");
   process.exit(n ? 0 : 1);
 })();

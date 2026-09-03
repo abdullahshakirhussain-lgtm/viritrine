@@ -2693,6 +2693,19 @@ app.use(express.static(PUBLIC_DIR, {
   },
 }));
 
+// Admin: pull the latest DB snapshot from R2 and restart to apply it (used after
+// scripts/db-push.js to push local bulk edits live without a redeploy or race).
+app.post("/api/admin/db/reload", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const n = await require("./dbbackup").stageReloadFromR2();
+    res.json({ ok: true, products: n, restarting: true });
+    console.log(`db: staged R2 reload (${n} products) — restarting to apply`);
+    setTimeout(() => process.exit(0), 600); // let the response flush; Railway restarts us
+  } catch (e) {
+    res.status(502).json({ error: e?.message || "Reload failed" });
+  }
+});
+
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/")) return res.status(404).json({ error: "Not found" });
   next();

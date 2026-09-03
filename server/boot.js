@@ -5,7 +5,11 @@
 try { require("dotenv").config(); } catch (_) {}
 
 (async () => {
-  try { await require("./dbbackup").restoreIfNeeded(); }
-  catch (e) { console.error("boot restore error:", e?.message || e); }
+  const backup = require("./dbbackup");
+  try {
+    // An admin "reload" stages a snapshot to swap in on this boot; else restore
+    // from R2 when there's no local DB. Both run before ./db opens the file.
+    if (!backup.applyIncomingIfPresent()) await backup.restoreIfNeeded();
+  } catch (e) { console.error("boot db-prep error:", e?.message || e); }
   require("./index"); // opens ./db (now restored) + listens + starts backups
 })();
