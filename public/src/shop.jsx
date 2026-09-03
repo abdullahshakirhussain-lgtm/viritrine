@@ -60,7 +60,7 @@ function Toast({ msg }) {
 
 /* ── Breadcrumb ────────────────────────────────── */
 function Breadcrumb({ filters }) {
-  const last = filters.brand ? BRANDS[filters.brand].name
+  const last = filters.brand ? (BRANDS[filters.brand]?.name || filters.brand)
             : filters.category ? CATEGORIES.find(c => c.key === filters.category)?.label
             : filters.skin ? (SKIN_TYPES.find(c => c.key === filters.skin)?.label || filters.skin) + " skin"
             : filters.concern ? CONCERNS.find(c => c.key === filters.concern)?.label
@@ -272,7 +272,7 @@ function FilterDrawer({ open, onClose, filters, setFilters, results }) {
           <div className="fd-chips">
             {BRAND_LIST.map(k => (
               <button key={k} className={"fd-chip" + (k === filters.brand ? " on" : "")}
-                onClick={() => setF("brand", k === filters.brand ? null : k)}>{BRANDS[k].name}</button>
+                onClick={() => setF("brand", k === filters.brand ? null : k)}>{BRANDS[k]?.name || k}</button>
             ))}
           </div>
           <div className="fd-section">More</div>
@@ -336,7 +336,7 @@ function ActiveFilters({ filters, setFilters, sort }) {
   const setF = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const pills = [];
   if (filters.category) pills.push({ k: "category", label: "Category: " + (CATEGORIES.find(c => c.key === filters.category)?.label || filters.category) });
-  if (filters.brand)    pills.push({ k: "brand",    label: "Brand: " + BRANDS[filters.brand].name });
+  if (filters.brand)    pills.push({ k: "brand",    label: "Brand: " + (BRANDS[filters.brand]?.name || filters.brand) });
   if (filters.skin)     pills.push({ k: "skin",     label: "Skin: " + (SKIN_TYPES.find(c => c.key === filters.skin)?.label || filters.skin) });
   if (filters.concern)  pills.push({ k: "concern",  label: "Concern: " + (CONCERNS.find(c => c.key === filters.concern)?.label || filters.concern) });
   if (filters.sale)       pills.push({ k: "sale",       label: "On Sale" });
@@ -413,7 +413,7 @@ function MobileFilterSheet({ open, onClose, filters, setFilters, sort, setSort }
           <div className="mfs-section">Brand</div>
           <div className="mfs-chips">
             {BRAND_LIST.map(k => (
-              <button key={k} className={"mfs-chip" + (k === filters.brand ? " on" : "")} onClick={() => setF("brand", k === filters.brand ? null : k)}>{BRANDS[k].name}</button>
+              <button key={k} className={"mfs-chip" + (k === filters.brand ? " on" : "")} onClick={() => setF("brand", k === filters.brand ? null : k)}>{BRANDS[k]?.name || k}</button>
             ))}
           </div>
 
@@ -509,7 +509,7 @@ function QuickView({ product, onClose, onAddToBag, onBuyNow, wishOn, onWish }) {
   }, [product, onClose]);
 
   if (!product) return null;
-  const b = BRANDS[product.brand];
+  const b = BRANDS[product.brand] || { name: product.brandName, loc: product.brandLoc, accent: undefined, font: "Italiana, serif" };
   const sizes = product.size ? [product.size, product.size.replace(/(\d+)/, (m) => +m * 2), product.size.replace(/(\d+)/, (m) => +m / 2)].filter((v, i, a) => a.indexOf(v) === i).slice(0, 3) : [];
   const now = product.sale || product.price;
 
@@ -611,7 +611,7 @@ function ExpressCheckout({ product, onClose, onDone }) {
   }, [product, onClose]);
 
   if (!product) return null;
-  const b = BRANDS[product.brand];
+  const b = BRANDS[product.brand] || { name: product.brandName, loc: product.brandLoc, accent: undefined, font: "Italiana, serif" };
   const now = (product.sale || product.price) * (product.qty || 1);
   const shipping = delivery === "express" ? 1500 : (now >= 25000 ? 0 : 850);
   const total = now + shipping + (payment === "cod" ? 200 : 0);
@@ -892,7 +892,7 @@ function ShopPage() {
         <div className="edit-scroller-wrap">
           <div className="edit-scroller">
             {sourcePR.filter(p => p.sale).slice(0, 10).map((p) => {
-              const b = BRANDS[p.brand];
+              const b = BRANDS[p.brand] || { name: p.brandName, loc: p.brandLoc, accent: undefined, font: "Italiana, serif" };
               const now = p.sale || p.price;
               return (
                 <article className="product" key={p.id} onClick={() => setQuickView(p)}>
