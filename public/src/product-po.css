@@ -32,3 +32,10 @@
     transition-duration: .001ms !important;
   }
 }
+
+/* ── PDP mobile header: collapse nav to a burger (parity with the storefront) ── */
+.po-burger { display: none; }
+@media (max-width: 780px) {
+  .po-nav-desktop { display: none !important; }
+  .po-burger { display: inline-flex !important; }
+}

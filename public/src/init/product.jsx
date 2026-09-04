@@ -56,19 +56,35 @@ function flyToBag(caseEl, bagEl) {
 /* ── Header ── */
 function Header({ count, bagRef, onBag }) {
   const link = { fontFamily: V.mono, fontSize: 11, letterSpacing: "0.12em" };
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const links = [["SHOP", "Shop.html"], ["NEW IN", "Shop.html#new=1"], ["SALE", "Shop.html#sale=1"], ["BRANDS", "/#brands"], ["STORIES", "journal.html"]];
   return (
     <header style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(253,253,252,0.95)", backdropFilter: "blur(8px)", borderBottom: "1px solid " + V.teal, padding: "13px " + PAD, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24 }}>
       <a href="/" style={{ fontFamily: V.display, fontWeight: 800, fontSize: "clamp(15px,1.7vw,19px)", letterSpacing: "0.04em" }}>VITRINE</a>
-      <nav style={{ display: "flex", flexWrap: "wrap", gap: "clamp(14px,2.4vw,32px)", ...link }}>
-        <a href="Shop.html">SHOP</a>
-        <a href="Shop.html#new=1">NEW IN</a>
-        <a href="Shop.html#sale=1">SALE</a>
-        <a href="/#brands">BRANDS</a>
-        <a href="journal.html">STORIES</a>
+      <nav className="po-nav-desktop" style={{ display: "flex", gap: "clamp(14px,2.4vw,32px)", ...link }}>
+        {links.map(([t, h]) => <a key={h} href={h}>{t}</a>)}
       </nav>
-      <button ref={bagRef} className="po-bagbtn" onClick={onBag} style={{ ...link, background: "none", border: "none", borderBottom: "1px solid " + V.teal, padding: "0 0 2px", cursor: "pointer", color: V.ink }}>
-        BAG ({String(count).padStart(2, "0")})
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <button ref={bagRef} className="po-bagbtn" onClick={onBag} style={{ ...link, background: "none", border: "none", borderBottom: "1px solid " + V.teal, padding: "0 0 2px", cursor: "pointer", color: V.ink }}>
+          BAG ({String(count).padStart(2, "0")})
+        </button>
+        <button className="po-burger" aria-label="Menu" onClick={() => setMenuOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", flexDirection: "column", gap: 5, padding: 4 }}>
+          <span style={{ display: "block", width: 22, height: 1.5, background: V.ink }}></span>
+          <span style={{ display: "block", width: 22, height: 1.5, background: V.ink }}></span>
+        </button>
+      </div>
+      {menuOpen && (
+        <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: V.paper, display: "flex", flexDirection: "column", padding: "18px " + PAD }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid " + V.teal, paddingBottom: 16 }}>
+            <span style={{ fontFamily: V.display, fontWeight: 800, fontSize: 19, letterSpacing: "0.04em" }}>VITRINE</span>
+            <button aria-label="Close" onClick={() => setMenuOpen(false)} style={{ background: "none", border: "none", fontSize: 28, cursor: "pointer", lineHeight: 1, color: V.ink }}>×</button>
+          </div>
+          <nav style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: "clamp(24px,6vw,44px)" }}>
+            {links.map(([t, h]) => <a key={h} href={h} style={{ fontFamily: V.display, fontWeight: 700, fontSize: "clamp(30px,9vw,46px)", letterSpacing: "-0.02em", padding: "10px 0", color: V.ink, textTransform: "uppercase" }}>{t}</a>)}
+            <a href="account.html" style={{ fontFamily: V.mono, fontSize: 12, letterSpacing: "0.14em", marginTop: 24, color: V.ink }}>ACCOUNT →</a>
+          </nav>
+        </div>
+      )}
     </header>
   );
 }
