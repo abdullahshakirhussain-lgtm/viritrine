@@ -11,7 +11,7 @@ const V = {
   mono: "'IBM Plex Mono', ui-monospace, monospace",
 };
 const PAD = "var(--vit-pad)";
-const NAV_LINKS = [["SHOP", "/Shop.html"], ["NEW IN", "/Shop.html#new=1"], ["SALE", "/Shop.html#sale=1"], ["BRANDS", "#maisons"], ["STORIES", "#journal"]];
+const NAV_LINKS = [["SHOP", "/Shop.html"], ["NEW IN", "/Shop.html#new=1"], ["SALE", "/Shop.html#sale=1"], ["BRANDS", "/brands"], ["STORIES", "#journal"]];
 const SKIN_BROWSE = [
   ["oily", "Oily", "Balance, oil-control & clarity"],
   ["dry", "Dry", "Rich moisture & barrier repair"],
@@ -183,7 +183,7 @@ function Home() {
         id: p.id,
       })));
     }).catch(() => setSlides(HERO_FALLBACK));
-    window.api.get("/api/editorial").then(r => setShelf(r || [])).catch(() => {});
+    window.api.get("/api/products?sort=bestselling&limit=30").then(r => setShelf(r || [])).catch(() => {});
     window.api.get("/api/products/new-arrivals?limit=8").then(r => setArrivals(r || [])).catch(() => {});
     window.api.get("/api/products?sale=1&sort=off-desc&limit=8").then(r => setSale(r || [])).catch(() => {});
     window.api.get("/api/brands").then(r => setBrands(r || [])).catch(() => {});
@@ -310,12 +310,12 @@ function Home() {
 
       {/* shelf */}
       <section id="shelf" style={{ padding: "clamp(84px,11vw,168px) 0 clamp(28px,4vw,46px)" }}>
-        <div style={{ padding: "0 " + PAD }}>{sectionHead("Shop", (shelf.length || 0) + " on the shelf")}</div>
+        <div style={{ padding: "0 " + PAD }}>{sectionHead("Bestsellers", "What's moving this week")}</div>
         <div style={{ overflowX: "auto", padding: "clamp(30px,4vw,54px) " + PAD + " 4px", display: "flex", gap: "clamp(18px,2.4vw,34px)", alignItems: "flex-end" }}>
           {shelf.map((p, i) => <div key={p.id} data-reveal style={{ width: "clamp(200px,22vw,264px)", flex: "0 0 auto", "--d": (i * 55) + "ms" }}><Tile p={p} onAdd={addToBag} h={"clamp(220px,26vw," + (240 + (i % 3) * 20) + "px)"} /></div>)}
           <div style={{ flex: "0 0 auto", width: "clamp(160px,18vw,220px)", alignSelf: "flex-end", paddingBottom: 24 }}>
-            <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: 16, lineHeight: 1.45, color: V.muted, margin: "0 0 14px" }}>Every brand here, we've tried.</p>
-            <a href="#maisons" style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.13em", borderBottom: "1px solid " + V.ink, paddingBottom: 3 }}>SEE ALL BRANDS →</a>
+            <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: 16, lineHeight: 1.45, color: V.muted, margin: "0 0 14px" }}>The brands you know, in one place.</p>
+            <a href="/brands" style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.13em", borderBottom: "1px solid " + V.ink, paddingBottom: 3 }}>SEE ALL BRANDS →</a>
           </div>
         </div>
       </section>
@@ -348,19 +348,24 @@ function Home() {
         </section>
       )}
 
-      {/* last chance (sale ledger) */}
+      {/* on sale — deal cards */}
       {sale.length > 0 && (
-        <section id="sale" style={{ padding: "clamp(84px,11vw,168px) " + PAD + " 0" }}>
-          {sectionHead("Last chance", sale.length + " pieces, no restock")}
-          <div style={{ marginTop: "clamp(26px,3vw,40px)" }}>
-            {sale.map((p) => (
-              <div key={p.id} data-reveal className="vit-row" style={{ display: "grid", gridTemplateColumns: "minmax(140px,2.2fr) minmax(90px,1.2fr) minmax(74px,0.9fr) minmax(84px,0.9fr) 64px", gap: "4px clamp(10px,1.6vw,26px)", alignItems: "center", borderBottom: "1px solid " + V.ruleSoft, padding: "clamp(16px,1.8vw,22px) 0", fontFamily: V.mono, fontSize: 11 }}>
-                <a href={"/product/" + p.id} style={{ fontFamily: V.display, fontWeight: 600, fontSize: "clamp(14px,1.5vw,19px)", letterSpacing: "-0.015em" }}>{p.name}</a>
-                <span style={{ fontFamily: V.body, fontWeight: 300, fontStyle: "italic", fontSize: 14, color: "#4A4A43" }}>{p.brandName}</span>
-                <span style={{ color: V.muted, textDecoration: "line-through" }}>{money(p.price)}</span>
-                <span style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ color: V.wine }}>{money(p.sale)}</span><span style={{ fontSize: 9, letterSpacing: "0.1em", color: V.muted }}>−{p.off}%</span></span>
-                <button className="vit-add" onClick={() => addToBag(p)} style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.1em", background: "none", border: "none", borderBottom: "1px solid " + V.rule, padding: "0 0 2px", cursor: "pointer", color: V.muted, justifySelf: "end" }}>ADD</button>
-              </div>
+        <section id="sale" style={{ padding: "clamp(84px,11vw,168px) 0 clamp(28px,4vw,46px)" }}>
+          <div style={{ padding: "0 " + PAD }}>{sectionHead("On Sale", "Up to " + Math.max.apply(null, sale.map(p => p.off || 0)) + "% off")}</div>
+          <div style={{ overflowX: "auto", padding: "clamp(30px,4vw,54px) " + PAD + " 4px", display: "flex", gap: "clamp(18px,2.4vw,34px)" }}>
+            {sale.map((p, i) => (
+              <a key={p.id} href={"/product/" + p.id} data-reveal style={{ "--d": (i * 55) + "ms", width: "clamp(210px,23vw,270px)", flex: "0 0 auto", display: "flex", flexDirection: "column" }}>
+                <div style={{ position: "relative", height: "clamp(230px,25vw,300px)", background: V.porcelain, border: "1px solid " + V.rule, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {p.image ? <img src={p.image} alt={[p.name, p.brandName].filter(Boolean).join(" — ")} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 16 }} /> : null}
+                  <span style={{ position: "absolute", top: 12, left: 12, background: V.wine, color: "#fff", fontFamily: V.mono, fontSize: 12, fontWeight: 500, letterSpacing: "0.04em", padding: "5px 9px" }}>−{p.off}%</span>
+                </div>
+                <div style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.14em", color: V.muted, margin: "14px 0 5px", textTransform: "uppercase" }}>{p.brandName}</div>
+                <div style={{ fontFamily: V.display, fontWeight: 600, fontSize: "clamp(14px,1.4vw,17px)", lineHeight: 1.2, letterSpacing: "-0.015em" }}>{p.name}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+                  <span style={{ fontFamily: V.mono, fontSize: 13, color: V.wine }}>{money(p.sale)}</span>
+                  <span style={{ fontFamily: V.mono, fontSize: 11, color: V.muted, textDecoration: "line-through" }}>{money(p.price)}</span>
+                </div>
+              </a>
             ))}
           </div>
         </section>
@@ -383,21 +388,19 @@ function Home() {
         </div>
       </section>
 
-      {/* brands */}
+      {/* brands — top-brand logo strip (full A–Z lives at /brands) */}
       {brands.length > 0 && (
         <section id="maisons" style={{ padding: "clamp(84px,11vw,168px) " + PAD + " 0" }}>
-          {sectionHead("The brands", brands.length + " houses")}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", borderLeft: "1px solid " + V.ruleSoft, marginTop: "clamp(28px,3vw,44px)" }}>
-            {brands.map((b, i) => (
-              <a key={b.key} href={"/brand/" + b.key} data-reveal className="vit-brandcell" onMouseEnter={() => setAb(i)} onFocus={() => setAb(i)} style={{ "--d": (i * 40) + "ms", borderRight: "1px solid " + V.ruleSoft, borderBottom: "1px solid " + V.ruleSoft, padding: "clamp(16px,2vw,26px) clamp(12px,1.6vw,20px)", minHeight: "clamp(120px,12vw,158px)", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 18 }}>
-                <span style={{ fontFamily: V.display, fontWeight: 600, fontSize: "clamp(16px,1.8vw,23px)", lineHeight: 1.02, letterSpacing: "-0.022em" }}>{b.name}</span>
-                <span style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.12em", color: V.muted }}>{(b.loc || "").toUpperCase()}</span>
+          {sectionHead("The brands", brands.length + " and counting", <a href="/brands" style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.13em", borderBottom: "1px solid " + V.ink, paddingBottom: 3 }}>ALL BRANDS →</a>)}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(clamp(118px,14vw,160px),1fr))", gap: 1, marginTop: "clamp(28px,3vw,44px)", background: V.ruleSoft, border: "1px solid " + V.ruleSoft }}>
+            {[...brands].sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 18).map((b, i) => (
+              <a key={b.key} href={"/brand/" + b.key} data-reveal title={b.name} style={{ "--d": (i * 35) + "ms", background: V.paper, minHeight: "clamp(92px,10vw,122px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(14px,2vw,22px)", transition: "background 0.25s" }}
+                onMouseEnter={e => e.currentTarget.style.background = V.porcelain} onMouseLeave={e => e.currentTarget.style.background = V.paper}>
+                {b.image
+                  ? <img src={b.image} alt={b.name} loading="lazy" style={{ maxWidth: "100%", maxHeight: "clamp(38px,5vw,58px)", objectFit: "contain" }} />
+                  : <span style={{ fontFamily: V.display, fontWeight: 600, fontSize: "clamp(13px,1.4vw,17px)", letterSpacing: "-0.01em", textAlign: "center", lineHeight: 1.12 }}>{b.name}</span>}
               </a>
             ))}
-          </div>
-          <div style={{ borderBottom: "1px solid " + V.ink, padding: "16px 0 clamp(18px,2vw,26px)", display: "flex", flexWrap: "wrap", gap: "10px 32px", alignItems: "baseline" }}>
-            <span style={{ fontFamily: V.mono, fontSize: 10, letterSpacing: "0.14em", color: V.wine, whiteSpace: "nowrap" }}>{(activeBrand.loc || "").toUpperCase()}</span>
-            <p style={{ fontFamily: V.body, fontWeight: 300, fontSize: "clamp(15px,1.5vw,19px)", lineHeight: 1.4, margin: 0, maxWidth: "62ch", color: "#33332E" }}>{activeBrand.tagline || (activeBrand.name ? activeBrand.name + (activeBrand.cat ? " — " + activeBrand.cat : "") + "." : "")}</p>
           </div>
         </section>
       )}

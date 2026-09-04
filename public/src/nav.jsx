@@ -54,7 +54,7 @@ function ShopMega({ open, onClose }) {
           </div>
           <div className="mega-col">
             <h6>By Brand</h6>
-            <a href="/#brands" className="mega-cat">All Brands ⟶</a>
+            <a href="/brands" className="mega-cat">All Brands ⟶</a>
             <a href="Shop.html#ceylon=1" className="mega-sub mega-pop">Ceylon Brands</a>
             {(window.BRAND_LIST || []).slice(0, 6).map(k => (
               <a key={k} href={"Shop.html#brand=" + k} className="mega-sub">{BRANDS[k]?.name}</a>
@@ -204,7 +204,7 @@ function SearchOverlay({ open, onClose }) {
               <div className="search-section">Quick Links</div>
               <div className="search-links">
                 <a href="Shop.html#sale=1">Sale</a>
-                <a href="/#brands">All Brands</a>
+                <a href="/brands">All Brands</a>
                 <a href="Shop.html#new=1">New Arrivals</a>
                 <a href="Shop.html#ceylon=1">Ceylon Brands</a>
               </div>
@@ -363,7 +363,7 @@ function MobileMenu({ open, onClose }) {
         </header>
         <div className="mob-list">
           <a href="Shop.html" onClick={onClose}>Shop</a>
-          <a href="/#brands" onClick={onClose}>Brands</a>
+          <a href="/brands" onClick={onClose}>Brands</a>
           <a href="Shop.html#sale=1" onClick={onClose}>Sale <span className="mob-dot"></span></a>
           <a href="/#journal" onClick={onClose}>Stories</a>
           <div className="mob-divider"></div>
@@ -417,7 +417,7 @@ function Nav({ name, tagline, onSearch, onBag }) {
               onMouseEnter={() => setMenu("shop")}
               onClick={() => setMenu(menu === "shop" ? null : "shop")}
             >Shop <CaretIcon /></button>
-            <a className="nav-link" href="/#brands" onMouseEnter={() => setMenu(null)}>Brands</a>
+            <a className="nav-link" href="/brands" onMouseEnter={() => setMenu(null)}>Brands</a>
             <div className="nav-trigger-wrap">
               <button
                 className={"nav-link nav-trigger sale" + (menu === "sale" ? " active" : "")}

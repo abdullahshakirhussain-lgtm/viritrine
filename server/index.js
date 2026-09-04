@@ -358,10 +358,12 @@ const cartPayload = (cart_id) => {
 
 /* ── catalog ─────────────────────────────────────────── */
 app.get("/api/brands", (_req, res) => {
-  const rows = db.prepare("SELECT * FROM brands ORDER BY sort").all();
+  const rows = db.prepare(`
+    SELECT b.*, (SELECT COUNT(*) FROM products p WHERE p.brand_key = b.key AND (p.is_active IS NULL OR p.is_active = 1)) AS count
+    FROM brands b ORDER BY b.sort`).all();
   res.json(rows.map(r => ({
     key: r.key, name: r.name, font: r.font, case: r.case_, accent: r.accent,
-    tagline: r.tagline, loc: r.loc, cat: r.cat, image: r.image || null,
+    tagline: r.tagline, loc: r.loc, cat: r.cat, image: r.image || null, count: r.count || 0,
   })));
 });
 
@@ -2536,6 +2538,27 @@ app.get("/concern/:key", (req, res) => {
   });
 });
 
+// Pretty URL: /brands (A–Z brand index)
+app.get("/brands", (req, res) => {
+  const s = settingsAll();
+  const siteName = s["site.name"] || "VITRINE";
+  const brands = db.prepare(`
+    SELECT b.key, b.name FROM brands b
+    WHERE EXISTS (SELECT 1 FROM products p WHERE p.brand_key = b.key AND (p.is_active IS NULL OR p.is_active = 1))
+    ORDER BY b.name COLLATE NOCASE`).all();
+  const itemList = {
+    "@context": "https://schema.org", "@type": "ItemList",
+    name: `Brands at ${siteName}`, numberOfItems: brands.length,
+    itemListElement: brands.map((b, i) => ({ "@type": "ListItem", position: i + 1, name: b.name, url: absoluteUrl(req, "/brand/" + b.key) })),
+  };
+  renderHtml(req, res, "brands.html", {
+    settingsCache: s,
+    title: `All brands — ${siteName}`,
+    description: `Every brand at ${siteName} — authentic skincare, K-beauty and makeup, delivered across Sri Lanka.`,
+    ldJson: [itemList, orgJsonLd(req)],
+  });
+});
+
 // Pretty URL: /journal and /journal/:slug
 app.get("/journal", (req, res) => {
   const s = settingsAll();
@@ -2638,6 +2661,7 @@ app.get("/sitemap.xml", (req, res) => {
   const url = (loc, lastmod, priority, image) => urls.push({ loc: absoluteUrl(req, loc), lastmod: lastmod || now, priority, image });
   url("/", now, "1.0");
   url("/Shop.html", now, "0.9");
+  url("/brands", now, "0.7");
   url("/journal", now, "0.7");
   url("/contact.html", now, "0.5");
 

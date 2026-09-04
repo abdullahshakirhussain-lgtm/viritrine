@@ -68,7 +68,7 @@ function Footer({ name = "VITRINE", tagline = "Beauty, Hand-Picked" }) {
           <a href="Shop.html#cat=body">Body &amp; Hair</a>
         </div>
         <div className="footer-col"><h5>Brands</h5>
-          <a href="/#brands">All Brands</a>
+          <a href="/brands">All Brands</a>
           <a href="Shop.html#new=1">New Arrivals</a>
           <a href="Shop.html#ceylon=1">Ceylon Brands</a>
           <a href="Shop.html#sale=1">Sale</a>
