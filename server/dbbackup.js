@@ -82,7 +82,7 @@ async function backupNow(reason) {
   // Don't clobber an external push: if R2's token changed since we loaded, a
   // db-push happened — leave it for a reload to apply.
   const cur = await readToken();
-  if (cur && lastToken && cur !== lastToken) {
+  if (cur && cur !== lastToken) {
     console.log("db: external push detected (token changed) — skipping backup; reload to apply");
     return 0;
   }
