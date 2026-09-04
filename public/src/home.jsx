@@ -22,9 +22,9 @@ const SKIN_BROWSE = [
 const money = (n) => (window.fmtLKR ? window.fmtLKR(n) : "LKR " + Number(n || 0).toLocaleString("en-US"));
 
 const HERO_FALLBACK = [
-  { eyebrow: "THIRTEEN BRANDS, ONE SHOP", title: "Kept under glass", dek: "Thirteen houses — pressed in Kandy, blended in Grasse, milled in Kyoto. Every brand here, we've tried.", cta: "Shop", objectLine: "Ceylon Verbena Pressed Oil, 30ml — Kandy", objectPrice: "LKR 12,400", id: null },
-  { eyebrow: "JUST LANDED", title: "Twelve weeks late", dek: "The Kyoto shipment cleared customs on Tuesday. Six pieces, no restock date, first come.", cta: "See what landed", objectLine: "Shiro Rice Polish, 50g — Kyoto", objectPrice: "LKR 9,800", id: null },
-  { eyebrow: "MADE IN SRI LANKA", title: "Grown here first", dek: "Four of our brands are made within two hundred kilometres of the shop.", cta: "Shop local", objectLine: "Cinnamon Gardens Hair Oil, 100ml — Colombo", objectPrice: "LKR 7,600", id: null },
+  { eyebrow: "AUTHENTIC SKINCARE", title: "Delivered islandwide", dek: "The brands you trust — genuine, at your door across Sri Lanka.", cta: "Shop skincare", href: "/Shop.html#cat=skincare", objectLine: "300+ products · islandwide delivery", objectPrice: "", id: null },
+  { eyebrow: "THE BRANDS YOU KNOW", title: "All in one place", dek: "CeraVe, The Ordinary, Cetaphil, Anua and more — one checkout.", cta: "Shop all brands", href: "/Shop.html", objectLine: "", objectPrice: "", id: null },
+  { eyebrow: "NEW IN THIS WEEK", title: "Freshly restocked", dek: "K-beauty, skincare and the everyday essentials you reorder — added weekly.", cta: "Shop new", href: "/Shop.html#new=1", objectLine: "", objectPrice: "", id: null },
 ];
 
 function money0(n){ return money(n); }
