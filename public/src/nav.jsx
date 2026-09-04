@@ -197,7 +197,7 @@ function SearchOverlay({ open, onClose }) {
             <>
               <div className="search-section">Popular</div>
               <div className="search-chips">
-                {["AYANA", "Florent Red", "Cinnamon Bath", "Velvet Black", "Tea Glow", "Iris", "Gold Oil"].map(t => (
+                {["CeraVe", "The Ordinary", "Sunscreen", "Vitamin C", "Anua", "Niacinamide", "Cleanser"].map(t => (
                   <button key={t} onClick={() => setQ(t)} className="search-chip">{t}</button>
                 ))}
               </div>

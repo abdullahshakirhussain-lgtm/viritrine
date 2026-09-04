@@ -2,10 +2,9 @@
 
 const ANNOUNCE = [
   "Free delivery across Sri Lanka on orders over LKR 25,000",
-  "Now stocking — AYANA Ceylon & Serendib",
-  "Hand-wrapped gifting with every order",
-  "Three free samples with every purchase",
-  "Visit us — 33 Galle Face Terrace, Colombo 03",
+  "The brands you trust — CeraVe, The Ordinary, Anua & more",
+  "100% authentic — genuine products only",
+  "Order by 3pm for next-day delivery in Colombo",
 ];
 
 function Announce() {
