@@ -62,9 +62,9 @@ function useMediaFlags() {
 // The inert "glass case" gradient — the visual when a slide has no clip or poster.
 function CaseGradient() {
   return (
-    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(116deg,#FCFDFD,#E7ECEB 46%,#FAFBFB)" }}>
-      <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "rgba(16,16,16,0.05)" }}></div>
-      <div style={{ position: "absolute", top: "-20%", bottom: "-20%", left: "-30%", right: "-30%", background: "linear-gradient(104deg,transparent 36%,rgba(255,255,255,0.9) 46%,rgba(255,255,255,0.2) 53%,transparent 62%)", animation: "vitGlint 11s cubic-bezier(0.5,0,0.5,1) infinite" }}></div>
+    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(116deg,#1E1E1C,#2C2C28 46%,#171716)" }}>
+      <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "rgba(255,255,255,0.05)" }}></div>
+      <div style={{ position: "absolute", top: "-20%", bottom: "-20%", left: "-30%", right: "-30%", background: "linear-gradient(104deg,transparent 40%,rgba(255,255,255,0.10) 48%,rgba(255,255,255,0.03) 54%,transparent 60%)", animation: "vitGlint 11s cubic-bezier(0.5,0,0.5,1) infinite" }}></div>
     </div>
   );
 }
