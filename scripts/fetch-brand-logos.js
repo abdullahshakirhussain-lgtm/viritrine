@@ -30,6 +30,14 @@ let budget = limitArg ? parseInt(limitArg.split("=")[1], 10) : Infinity;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const CT_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg", "image/x-icon": ".ico", "image/vnd.microsoft.icon": ".ico" };
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+// fetch with a hard timeout (this box's DNS stalls without one → the whole run hangs).
+async function fetchT(url, opts = {}, ms = 15000) {
+  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ac.signal }); }
+  finally { clearTimeout(t); }
+}
 
 async function withRetry(fn, tries = 4) {
   let last;
@@ -47,7 +55,7 @@ async function withRetry(fn, tries = 4) {
 // Resolve a brand name → best-matching domain via the Brandfetch Search API.
 async function resolveDomain(name) {
   const url = `https://api.brandfetch.io/v2/search/${encodeURIComponent(name)}?c=${encodeURIComponent(KEY)}`;
-  const r = await fetch(url, { headers: { Accept: "application/json" } });
+  const r = await fetchT(url, { headers: { Accept: "application/json", "User-Agent": UA } });
   if (!r.ok) throw new Error("HTTP " + r.status);
   const list = await r.json();
   if (!Array.isArray(list) || !list.length) return null;
@@ -59,8 +67,8 @@ async function resolveDomain(name) {
 
 // Download the Logo Link CDN image for a domain.
 async function fetchLogo(domain) {
-  const url = `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${encodeURIComponent(KEY)}`;
-  const r = await fetch(url, { redirect: "follow" });
+  const url = `https://cdn.brandfetch.io/${domain}/w/400/logo?c=${encodeURIComponent(KEY)}`;
+  const r = await fetchT(url, { redirect: "follow", headers: { Accept: "image/*", "User-Agent": UA } });
   if (!r.ok) throw new Error("HTTP " + r.status);
   const ct = (r.headers.get("content-type") || "").split(";")[0].toLowerCase();
   if (!ct.startsWith("image/")) return null;
