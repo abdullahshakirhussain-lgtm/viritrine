@@ -26,10 +26,14 @@ const args = process.argv.slice(2);
 const FORCE = args.includes("--force");
 const limitArg = args.find(a => a.startsWith("--limit="));
 let budget = limitArg ? parseInt(limitArg.split("=")[1], 10) : Infinity;
+const delayArg = args.find(a => a.startsWith("--delay="));
+const DELAY = delayArg ? parseInt(delayArg.split("=")[1], 10) : 160; // ms between brands (raise to dodge rate limits)
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const CT_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg", "image/x-icon": ".ico", "image/vnd.microsoft.icon": ".ico" };
+// Known Brandfetch fallback images (blank 606b + the "Brandfetch" wordmark) — reject as misses.
+const PLACEHOLDERS = new Set(["b23c4e5871012e6e52f025bb3d625e83", "a48cf75b22403cbea7a9b513793c66f1"]);
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 // fetch with a hard timeout (this box's DNS stalls without one → the whole run hangs).
@@ -60,9 +64,16 @@ async function resolveDomain(name) {
   const list = await r.json();
   if (!Array.isArray(list) || !list.length) return null;
   const want = norm(name);
-  // Prefer exact normalized-name match, then verified, then the first result.
-  const exact = list.find(x => norm(x.name) === want) || list.find(x => norm(x.name).includes(want) || want.includes(norm(x.name)));
-  return (exact || list.find(x => x.verified) || list[0]).domain || null;
+  const c = list.filter(x => x.domain);
+  const nm = (x) => norm(x.name);
+  // Prefer VERIFIED matches (garnier.com "Garnier USA") over an unverified exact
+  // name (garnierarabia.com "Garnier") — the latter often has no real logo.
+  const pick = c.find(x => x.verified && nm(x) === want)
+    || c.find(x => x.verified && (nm(x).includes(want) || want.includes(nm(x))))
+    || c.find(x => nm(x) === want)
+    || c.find(x => x.verified)
+    || c[0];
+  return pick ? pick.domain : null;
 }
 
 // Download the Logo Link CDN image for a domain.
@@ -74,6 +85,8 @@ async function fetchLogo(domain) {
   if (!ct.startsWith("image/")) return null;
   const buf = Buffer.from(await r.arrayBuffer());
   if (buf.length < 300) return null; // reject empty/placeholder
+  const md5 = crypto.createHash("md5").update(buf).digest("hex");
+  if (PLACEHOLDERS.has(md5)) return null; // Brandfetch generic fallback → treat as a miss
   return { buf, ext: CT_EXT[ct] || ".png", ct };
 }
 
@@ -94,7 +107,7 @@ async function fetchLogo(domain) {
       done++; budget--;
       process.stdout.write(done % 10 === 0 ? String(done) : "•");
     } catch (e) { missed++; process.stdout.write("x"); }
-    await sleep(160);
+    await sleep(DELAY);
   }
   console.log(`\nDone. logos set ${done} · already had ${skipped} · missed ${missed}. Next: node scripts/db-push.js → admin "Reload from R2".`);
   process.exit(0);
