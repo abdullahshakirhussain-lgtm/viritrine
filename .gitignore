@@ -16,3 +16,6 @@ scratch_*.log
 # motion.js is a hand-written ES module, not build output — keep it tracked.
 public/src/**/*.js
 !public/src/motion.js
+
+# stray local upload artifacts (media lives on R2)
+server/data/uploads/_*

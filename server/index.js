@@ -2229,6 +2229,9 @@ const escapeAttr = escapeHtml;
 const stripHtml  = (s) => String(s || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 const truncate   = (s, n) => { s = String(s || ""); return s.length <= n ? s : s.slice(0, n - 1).trim() + "…"; };
 const absoluteUrl = (req, rel) => `${req.protocol}://${req.get("host")}${rel.startsWith("/") ? rel : "/" + rel}`;
+// Like absoluteUrl but leaves already-absolute URLs (e.g. R2/CDN media) untouched —
+// prevents doubling the host onto https://…r2.dev/… image URLs.
+const mediaUrl = (req, u) => (!u ? u : /^https?:\/\//i.test(u) ? u : absoluteUrl(req, u));
 
 // Builds the <head> SEO block to inject in place of <!--VT-SEO--> in HTML templates.
 function buildSeoHead(req, opts = {}) {
@@ -2249,6 +2252,10 @@ function buildSeoHead(req, opts = {}) {
   if (desc)        lines.push(`<meta name="description" content="${escapeAttr(truncate(desc, 200))}" />`);
   lines.push(`<meta name="robots" content="${allowIndex ? "index, follow" : "noindex, nofollow"}" />`);
   lines.push(`<link rel="canonical" href="${escapeAttr(canonical)}" />`);
+  // Single-locale store (English, Sri Lanka) — self-referencing hreflang tells
+  // Google the language/region and that this is the default for other locales.
+  lines.push(`<link rel="alternate" hreflang="en-LK" href="${escapeAttr(canonical)}" />`);
+  lines.push(`<link rel="alternate" hreflang="x-default" href="${escapeAttr(canonical)}" />`);
   // Favicon + manifest + theme colour (injected once per response)
   lines.push(`<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`);
   lines.push(`<link rel="apple-touch-icon" href="/favicon.svg" />`);
@@ -2314,9 +2321,10 @@ const orgJsonLd = (req) => {
   const email    = s["site.email"]   || "";
   const addr1    = s["site.address_line1"] || "";
   const addr2    = s["site.address_line2"] || "";
-  const ig       = s["site.instagram"];  const pi = s["site.pinterest"];
-  const sameAs   = [ig, pi].filter(Boolean);
+  const ig       = s["site.instagram"];  const pi = s["site.pinterest"];  const wa = s["site.whatsapp"];
+  const sameAs   = [ig, pi, wa].filter(Boolean);
   const ogImg    = s["seo.og_image"] || "";
+  const logo     = ogImg ? mediaUrl(req, ogImg) : absoluteUrl(req, "/favicon.svg");
   // Optional local-SEO fields — populated only when the owner sets them in
   // settings (site.geo_lat/geo_lng, site.hours "Mo-Su 09:00-18:00", site.price_range).
   const lat = s["site.geo_lat"], lng = s["site.geo_lng"];
@@ -2327,8 +2335,9 @@ const orgJsonLd = (req) => {
     "@id": absoluteUrl(req, "/") + "#store",
     "name": siteName,
     "url": absoluteUrl(req, "/"),
+    "logo": logo,
     "description": s["seo.description"] || "",
-    "image": ogImg ? absoluteUrl(req, ogImg) : undefined,
+    "image": ogImg ? mediaUrl(req, ogImg) : logo,
     "telephone": phone || undefined,
     "email": email || undefined,
     "priceRange": s["site.price_range"] || "$$",
@@ -2346,15 +2355,33 @@ const orgJsonLd = (req) => {
   };
 };
 
+// WebSite node — enables the Google sitelinks search box. Target points at the
+// crawlable shop search results URL (/shop?q=…, handled client-side via parseHash).
+const websiteJsonLd = (req) => {
+  const s = settingsAll();
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": absoluteUrl(req, "/") + "#website",
+    "name": s["site.name"] || "VITRINE",
+    "url": absoluteUrl(req, "/"),
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": { "@type": "EntryPoint", "urlTemplate": absoluteUrl(req, "/shop?q={search_term_string}") },
+      "query-input": "required name=search_term_string",
+    },
+  };
+};
+
 // Homepage
 app.get("/", (req, res) => {
   const s = settingsAll();
   renderHtml(req, res, "VITRINE - Beauty, Curated.html", {
     settingsCache: s,
-    title: `${s["site.name"] || "VITRINE"} — ${s["site.tagline"] || "Beauty, Hand-Picked"}`,
+    title: s["seo.home_title"] || `${s["site.name"] || "VITRINE"} — Authentic Beauty & Skincare, Sri Lanka`,
     description: s["seo.description"],
     ogType: "website",
-    ldJson: [orgJsonLd(req)],
+    ldJson: [orgJsonLd(req), websiteJsonLd(req)],
   });
 });
 
@@ -2368,10 +2395,13 @@ function shopMeta(req, opts) {
 app.get(["/Shop.html", "/shop"], (req, res) => {
   const s = settingsAll();
   const siteName = s["site.name"] || "VITRINE";
+  const q = (req.query.q || "").toString().trim().slice(0, 60);
+  const title = q ? `“${q}” — Search — ${siteName}` : `Shop — ${siteName}`;
+  const description = q
+    ? `Search results for “${q}” at ${siteName} — authentic beauty brands, delivered across Sri Lanka.`
+    : `Every piece in store at ${siteName}. ` + (s["seo.description"] || "");
   renderHtml(req, res, "Shop.html", {
-    settingsCache: s,
-    title: `Shop — ${siteName}`,
-    description: `Every piece in store at ${siteName}. ` + (s["seo.description"] || ""),
+    settingsCache: s, title, description,
     ldJson: [orgJsonLd(req)],
   });
 });
@@ -2389,10 +2419,37 @@ app.get("/product/:id", (req, res) => {
   const brand = db.prepare("SELECT * FROM brands WHERE key=?").get(p.brand);
   const brandName = brand?.name || p.brandName || "";
   const price = p.sale || p.price;
-  const img = p.image ? absoluteUrl(req, p.image) : (s["seo.og_image"] ? absoluteUrl(req, s["seo.og_image"]) : undefined);
+  const img = p.image ? mediaUrl(req, p.image) : (s["seo.og_image"] ? mediaUrl(req, s["seo.og_image"]) : undefined);
   // Prefer admin/AI-authored SEO fields when present, else fall back to generated ones.
   const title = p.metaTitle || `${p.name}${p.italic ? " " + p.italic : ""} — ${brandName} — ${siteName}`;
   const desc  = p.metaDesc || stripHtml(p.copy) || `${p.name} ${p.italic || ""} from ${brandName} at ${siteName}.`;
+  // Google wants a future priceValidUntil on offers (esp. sale prices) or it warns.
+  const priceValidUntil = new Date(Date.now() + 180 * 864e5).toISOString().slice(0, 10);
+  // Shipping mirrors the store's publicly stated terms (free over LKR 25,000,
+  // next-day Colombo / islandwide) → eligibility for merchant-listing rich results.
+  const flatShip = Number(s["commerce.ship_flat"] || 390);
+  const freeOver = Number(s["commerce.free_over"] || 25000);
+  const shippingDetails = {
+    "@type": "OfferShippingDetails",
+    "shippingRate": { "@type": "MonetaryAmount", "value": String(flatShip), "currency": "LKR" },
+    "shippingDestination": { "@type": "DefinedRegion", "addressCountry": "LK" },
+    "deliveryTime": {
+      "@type": "ShippingDeliveryTime",
+      "handlingTime": { "@type": "QuantitativeValue", "minValue": 0, "maxValue": 1, "unitCode": "DAY" },
+      "transitTime":  { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 3, "unitCode": "DAY" },
+    },
+  };
+  if (freeOver > 0) shippingDetails.shippingRate.freeShippingThreshold = { "@type": "MonetaryAmount", "value": String(freeOver), "currency": "LKR" };
+  // Optional, honest return policy — only emitted if the owner sets commerce.return_days.
+  const returnDays = Number(s["commerce.return_days"] || 0);
+  const returnPolicy = returnDays > 0 ? {
+    "@type": "MerchantReturnPolicy",
+    "applicableCountry": "LK",
+    "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+    "merchantReturnDays": returnDays,
+    "returnMethod": "https://schema.org/ReturnByMail",
+    "returnFees": "https://schema.org/FreeReturn",
+  } : undefined;
   const product = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -2400,15 +2457,21 @@ app.get("/product/:id", (req, res) => {
     "description": desc,
     "image": img ? [img] : undefined,
     "sku": p.id.toUpperCase(),
+    "mpn": p.id.toUpperCase(),
     "brand": brandName ? { "@type": "Brand", "name": brandName } : undefined,
     "category": p.category,
     "offers": {
       "@type": "Offer",
+      "@id": absoluteUrl(req, "/product/" + p.id) + "#offer",
       "url": absoluteUrl(req, "/product/" + p.id),
       "priceCurrency": "LKR",
       "price": String(price),
+      "priceValidUntil": priceValidUntil,
       "availability": (p.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"),
       "itemCondition": "https://schema.org/NewCondition",
+      "seller": { "@type": "Organization", "name": siteName },
+      "shippingDetails": shippingDetails,
+      "hasMerchantReturnPolicy": returnPolicy,
     },
   };
   const breadcrumb = {
@@ -2423,7 +2486,7 @@ app.get("/product/:id", (req, res) => {
   };
   renderHtml(req, res, "product.html", {
     settingsCache: s,
-    title, description: desc, image: img && img.replace(absoluteUrl(req, "/"), "/"),
+    title, description: desc, image: img,
     ogType: "product",
     ldJson: [product, breadcrumb],
   });
@@ -2446,7 +2509,7 @@ app.get("/brand/:key", (req, res) => {
     "@type": "BreadcrumbList",
     "itemListElement": [
       { "@type": "ListItem", position: 1, name: "Home",   item: absoluteUrl(req, "/") },
-      { "@type": "ListItem", position: 2, name: "Brands", item: absoluteUrl(req, "/#brands") },
+      { "@type": "ListItem", position: 2, name: "Brands", item: absoluteUrl(req, "/brands") },
       { "@type": "ListItem", position: 3, name: b.name },
     ],
   };

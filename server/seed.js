@@ -112,7 +112,7 @@ const DEFAULT_SETTINGS = {
   "site.instagram":        "https://instagram.com/vitrine.lk",
   "site.pinterest":        "https://pinterest.com/vitrine.lk",
   "site.whatsapp":         "https://wa.me/94115551998",
-  "site.footer_blurb":     "A Colombo beauty shop carrying the brands we love — from Ceylon to Kyoto, Lyon to Brooklyn. Hand-picked, hand-wrapped, delivered across the island.",
+  "site.footer_blurb":     "A Colombo beauty store carrying the brands you trust — CeraVe, The Ordinary, Cetaphil, Anua, Dr Rashel and more. 100% authentic, delivered across Sri Lanka.",
   "newsletter.heading":    "The Monthly Letter.",
   "newsletter.heading_em": "Monthly",
   "newsletter.body":       "One email a month — early access to new arrivals, shop events at Galle Face, and the occasional ingredient story. Never more.",
@@ -120,7 +120,8 @@ const DEFAULT_SETTINGS = {
   "shipping.express_lkr":  1500,
   "shipping.free_over_lkr":25000,
   "shipping.cod_fee_lkr":  200,
-  "seo.description":       "A Colombo multi-brand beauty boutique — Ceylon brands, Lyon perfumers, Brooklyn skincare. Hand-picked, hand-wrapped, delivered across Sri Lanka.",
+  "seo.home_title":        "VITRINE — Authentic Beauty & Skincare, Sri Lanka",
+  "seo.description":       "Shop authentic CeraVe, The Ordinary, Anua, Cetaphil & Dr Rashel skincare and makeup at VITRINE — Sri Lanka's multi-brand beauty store. Genuine products, delivered islandwide from Colombo.",
   "seo.og_image":          "",
   "seo.twitter":           "",
   "seo.allow_indexing":    true,
@@ -136,8 +137,8 @@ const DEFAULT_SETTINGS = {
 
 const DEFAULT_ANNOUNCEMENTS = [
   "Free delivery across Sri Lanka on orders over LKR 25,000",
-  "Now stocking — AYANA Ceylon & Serendib",
-  "Hand-wrapped gifting with every order",
+  "Shop CeraVe, The Ordinary, Anua, Cetaphil & more — 100% authentic",
+  "Next-day delivery in Colombo — order by 3pm",
   "Three free samples with every purchase",
   "Visit us — 33 Galle Face Terrace, Colombo 03",
 ];

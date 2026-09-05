@@ -6,7 +6,10 @@
 const fmtLKR = (n) => "LKR " + n.toLocaleString("en-US");
 
 function parseHash() {
-  const out = Object.fromEntries(new URLSearchParams((window.location.hash || "").replace(/^#/, "")).entries());
+  // Query-string params (e.g. /shop?q=cerave from Google's sitelinks searchbox or a
+  // shared link) seed the filters; an in-page hash (#…) overrides them.
+  const out = Object.fromEntries(new URLSearchParams(window.location.search || "").entries());
+  Object.assign(out, Object.fromEntries(new URLSearchParams((window.location.hash || "").replace(/^#/, "")).entries()));
   // Pretty URLs: /brand/:key, /category/:key, /skin/:key, /concern/:key map to filters.
   const m = window.location.pathname.match(/^\/(brand|category|skin|concern)\/([a-z0-9_-]+)/i);
   if (m) {
